@@ -52,7 +52,7 @@
     #panel-main { display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 380px; margin: 0 auto; }
 
     .dpad { display: grid; grid-template-columns: 44px 44px 44px; grid-template-rows: 44px 44px; gap: 3px; }
-    .dpad button { background: #2e2e2e; color: white; border: 1px solid #444; border-radius: 8px; font-size: 17px; font-weight: bold; touch-action: manipulation; }
+    .dpad button { background: #2e2e2e; color: white; border: 1px solid #444; border-radius: 8px; font-size: 17px; font-weight: bold; touch-action: none; -webkit-tap-highlight-color: transparent; }
     .dpad button:active { background: #00e676; color: #000; }
     
     .actions { display: flex; flex-direction: column; gap: 6px; flex: 1; margin-left: 8px; }
@@ -103,14 +103,12 @@
   <input type="file" id="album-input" accept="image/*" style="display: none;">
 
   <div id="main-container">
-    <!-- 초기 업로드 영역 -->
     <div id="upload-view" onclick="document.getElementById('album-input').click()">
       <div class="upload-icon">🖼️</div>
       <div class="upload-title">갤러리에서 사진 선택</div>
       <div class="upload-desc">스캔할 신분증 사진을 불러오면<br>자동으로 정밀 편집 화면이 열립니다.</div>
     </div>
 
-    <!-- 모서리 편집 화면 -->
     <div id="editor-view">
       <canvas id="editor-canvas"></canvas>
       <div id="loupe-container">
@@ -120,7 +118,6 @@
     </div>
   </div>
 
-  <!-- 하단 조작 패널 -->
   <div id="control-panel">
     <div id="corner-selector">
       <button class="corner-btn active" onclick="selectCorner(0)">┌ 좌상</button>
@@ -133,11 +130,11 @@
     <div id="panel-main">
       <div class="dpad" id="dpad-box">
         <div></div>
-        <button onmousedown="startNudge(0,-1)" onmouseup="stopNudge()" ontouchstart="startNudge(0,-1)" ontouchend="stopNudge()">▲</button>
+        <button id="btn-up">▲</button>
         <div></div>
-        <button onmousedown="startNudge(-1,0)" onmouseup="stopNudge()" ontouchstart="startNudge(-1,0)" ontouchend="stopNudge()">◀</button>
-        <button onmousedown="startNudge(0,1)" onmouseup="stopNudge()" ontouchstart="startNudge(0,1)" ontouchend="stopNudge()">▼</button>
-        <button onmousedown="startNudge(1,0)" onmouseup="stopNudge()" ontouchstart="startNudge(1,0)" ontouchend="stopNudge()">▶</button>
+        <button id="btn-left">◀</button>
+        <button id="btn-down">▼</button>
+        <button id="btn-right">▶</button>
       </div>
 
       <div class="actions">
@@ -157,6 +154,7 @@
     let originalImg = null, points = [], activeIdx = 0, scaleX = 1, scaleY = 1;
     let stepSize = 0.5;
     let nudgeTimer = null, nudgeInterval = null;
+    let renderRequested = false;
     const cornerNames = ["좌상단 ┌", "우상단 ┐", "우하단 ┘", "좌하단 └"];
 
     function onOpenCvReady() { cvReady = true; }
@@ -181,9 +179,9 @@
         btn.style.background = "#ff9800";
         btn.style.color = "#000";
       }
+      requestSafeRender();
     }
 
-    // 갤러리 원본 고화질 로드
     document.getElementById('album-input').onchange = (e) => {
       const file = e.target.files[0];
       if (!file) return;
@@ -214,7 +212,6 @@
       scaleX = originalImg.width / canvas.width;
       scaleY = originalImg.height / canvas.height;
 
-      // 신분증 표준 비율(1.586 : 1) 박스 중앙 배치
       const w = canvas.width, h = canvas.height;
       const cardW = Math.min(w * 0.80, h * 0.80 * 1.586);
       const cardH = cardW / 1.586;
@@ -238,7 +235,18 @@
         if (i === idx) b.classList.add('active');
         else b.classList.remove('active');
       });
-      render();
+      requestSafeRender();
+    }
+
+    // 렌더링 과부하 방지 (requestAnimationFrame)
+    function requestSafeRender() {
+      if (!renderRequested) {
+        renderRequested = true;
+        requestAnimationFrame(() => {
+          render();
+          renderRequested = false;
+        });
+      }
     }
 
     function render() {
@@ -271,7 +279,6 @@
       updateLoupe();
     }
 
-    // 4배율 정밀 확대경
     function updateLoupe() {
       const loupe = document.getElementById('loupe-container');
       const lCanvas = document.getElementById('loupe-canvas');
@@ -319,29 +326,48 @@
       lCtx.restore();
     }
 
-    // 0.5px 미세 이동 & 연속 롱프레스
+    // 0.5px 미세 이동 실행 함수
     function applyNudge(dirX, dirY) {
       if (activeIdx === -1) return;
       const canvas = document.getElementById('editor-canvas');
       points[activeIdx].x = Math.max(0, Math.min(canvas.width, points[activeIdx].x + (dirX * stepSize)));
       points[activeIdx].y = Math.max(0, Math.min(canvas.height, points[activeIdx].y + (dirY * stepSize)));
-      render();
+      requestSafeRender();
     }
 
-    function startNudge(dirX, dirY) {
-      applyNudge(dirX, dirY);
-      nudgeTimer = setTimeout(() => {
-        nudgeInterval = setInterval(() => {
-          applyNudge(dirX, dirY);
-        }, 50);
-      }, 300);
+    // 포인터 이벤트(PointerEvent) 기반 안전 타이머 바인딩
+    function bindDpadButton(btnId, dirX, dirY) {
+      const btn = document.getElementById(btnId);
+
+      const start = (e) => {
+        e.preventDefault();
+        stopNudge(); // 기존에 남아있는 타이머 완전 종료
+        applyNudge(dirX, dirY);
+
+        nudgeTimer = setTimeout(() => {
+          nudgeInterval = setInterval(() => {
+            applyNudge(dirX, dirY);
+          }, 60);
+        }, 280);
+      };
+
+      btn.addEventListener('pointerdown', start);
+      btn.addEventListener('pointerup', stopNudge);
+      btn.addEventListener('pointercancel', stopNudge);
+      btn.addEventListener('pointerleave', stopNudge);
     }
 
     function stopNudge() {
-      if (nudgeTimer) clearTimeout(nudgeTimer);
-      if (nudgeInterval) clearInterval(nudgeInterval);
+      if (nudgeTimer) { clearTimeout(nudgeTimer); nudgeTimer = null; }
+      if (nudgeInterval) { clearInterval(nudgeInterval); nudgeInterval = null; }
     }
 
+    bindDpadButton('btn-up', 0, -1);
+    bindDpadButton('btn-down', 0, 1);
+    bindDpadButton('btn-left', -1, 0);
+    bindDpadButton('btn-right', 1, 0);
+
+    // 캔버스 터치/드래그 조작
     const canvas = document.getElementById('editor-canvas');
     function getCanvasPoint(e) {
       const rect = canvas.getBoundingClientRect();
@@ -370,15 +396,15 @@
       const pt = getCanvasPoint(e);
       points[activeIdx].x = Math.max(0, Math.min(canvas.width, pt.x));
       points[activeIdx].y = Math.max(0, Math.min(canvas.height, pt.y));
-      render();
+      requestSafeRender();
     }
 
     canvas.addEventListener('mousedown', handleTouch);
-    canvas.addEventListener('touchstart', handleTouch);
+    canvas.addEventListener('touchstart', handleTouch, {passive: false});
     canvas.addEventListener('mousemove', handleDrag);
-    canvas.addEventListener('touchmove', handleDrag, {passive:false});
+    canvas.addEventListener('touchmove', handleDrag, {passive: false});
 
-    // 초고화질 왜곡 보정 및 자른 흔적 제거
+    // 600 DPI 고화질 왜곡 보정 및 자른 흔적 제거
     function getCleanCardCanvas() {
       const dstW = 2022, dstH = 1276;
       const rawCanvas = document.createElement('canvas');
