@@ -47,16 +47,18 @@
     .dpad button { background: #333; color: white; border: 1px solid #555; border-radius: 8px; font-size: 18px; font-weight: bold; }
     .dpad button:active { background: #00e676; color: #000; }
     
-    .actions { display: flex; flex-direction: column; gap: 6px; width: 120px; }
-    .btn { height: 45px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-    .btn-shoot { background: #2979ff; color: white; }
-    .btn-warp { background: #00e676; color: black; }
+    .actions { display: flex; flex-direction: column; gap: 6px; width: 140px; }
+    .btn-row { display: flex; gap: 5px; width: 100%; }
+    .btn { height: 42px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .btn-camera { background: #2979ff; color: white; }
+    .btn-album { background: #455a64; color: white; }
+    .btn-warp { background: #00e676; color: black; font-size: 16px; font-weight: bold; }
     .btn-print { background: #9c27b0; color: white; }
     
     #result-modal { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:200; }
     #result-canvas { max-width: 95vw; max-height: 65vh; object-fit: contain; border: 2px solid #fff; border-radius: 6px; }
 
-    /* A4 실제 크기(85.6mm x 53.98mm) 인쇄 전용 스타일 */
+    /* A4 실제 규격(85.6mm x 53.98mm) 1:1 출력 전용 스타일 */
     #print-area { display: none; }
     @media print {
       @page { size: A4 portrait; margin: 0; }
@@ -89,28 +91,37 @@
     </div>
   </div>
 
+  <!-- 컨트롤 패널 -->
   <div id="control-panel">
     <div class="dpad">
       <div></div><button onclick="nudge(0,-2)">▲</button><div></div>
       <button onclick="nudge(-2,0)">◀</button><button onclick="nudge(0,2)">▼</button><button onclick="nudge(2,0)">▶</button>
     </div>
     <div class="actions">
-      <input type="file" id="file-input" accept="image/*" style="display: none;">
-      <button class="btn btn-shoot" onclick="document.getElementById('file-input').click()">📷 사진/앨범</button>
+      <!-- 카메라 전용 input (capture="environment") -->
+      <input type="file" id="camera-input" accept="image/*" capture="environment" style="display: none;">
+      <!-- 앨범 전용 input -->
+      <input type="file" id="album-input" accept="image/*" style="display: none;">
+      
+      <div class="btn-row">
+        <button class="btn btn-camera" style="flex: 1;" onclick="document.getElementById('camera-input').click()">📷 촬영</button>
+        <button class="btn btn-album" style="flex: 1;" onclick="document.getElementById('album-input').click()">🖼️ 앨범</button>
+      </div>
       <button class="btn btn-warp" id="btn-scan" onclick="processScan()">완료</button>
     </div>
   </div>
 
+  <!-- 결과 모달 -->
   <div id="result-modal">
     <canvas id="result-canvas"></canvas>
     <div style="display: flex; gap: 8px; margin-top: 18px; width: 92%; max-width: 400px;">
-      <button class="btn btn-shoot" style="flex: 1;" onclick="document.getElementById('result-modal').style.display='none'">다시 수정</button>
+      <button class="btn btn-camera" style="flex: 1;" onclick="document.getElementById('result-modal').style.display='none'">다시 수정</button>
       <button class="btn btn-print" style="flex: 1.2;" onclick="printA4()">🖨️ A4 인쇄</button>
       <button class="btn btn-warp" style="flex: 1;" onclick="downloadResult()">저장(JPG)</button>
     </div>
   </div>
 
-  <!-- A4 인쇄용 컨테이너 -->
+  <!-- A4 인쇄용 숨김 영역 -->
   <div id="print-area"><img id="print-img" alt="신분증 인쇄"></div>
 
   <script>
@@ -119,8 +130,7 @@
 
     function onOpenCvReady() { cvReady = true; }
 
-    document.getElementById('file-input').onchange = (e) => {
-      const file = e.target.files[0];
+    function handleFile(file) {
       if (!file) return;
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -139,9 +149,12 @@
         originalImg.src = event.target.result;
       };
       reader.readAsDataURL(file);
-    };
+    }
 
-    // 다단계 외곽선 자동 감지 알고리즘
+    document.getElementById('camera-input').onchange = (e) => handleFile(e.target.files[0]);
+    document.getElementById('album-input').onchange = (e) => handleFile(e.target.files[0]);
+
+    // 다단계 외곽선 자동 감지
     function autoDetectSmart() {
       if (!cvReady) { setDefaultPoints(); render(); return; }
 
@@ -349,7 +362,7 @@
 
     function processScan() {
       if (!cvReady || !originalImg) return;
-      const dstW = 1011, dstH = 638; // 300 DPI 규격 (85.6mm : 53.98mm)
+      const dstW = 1011, dstH = 638; // 300 DPI 실물 규격 (85.6mm : 53.98mm)
       const srcMat = cv.imread(originalImg);
       const dstMat = new cv.Mat();
       const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, points.flatMap(p => [p.x * scaleX, p.y * scaleY]));
@@ -373,7 +386,7 @@
       link.click();
     }
 
-    // 🖨️ A4 용지 상단 1:1 실물 크기 즉시 인쇄/PDF 저장
+    // 🖨️ A4 용지 실물 1:1 인쇄
     function printA4() {
       const dataUrl = document.getElementById('result-canvas').toDataURL('image/jpeg', 1.0);
       const pImg = document.getElementById('print-img');
