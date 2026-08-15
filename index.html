@@ -3,67 +3,88 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>신분증 스마트 스캐너</title>
+  <title>신분증 스마트 자동 스캐너</title>
   <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; touch-action: none; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #000; color: #fff; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
     
-    header { height: 44px; background: #181818; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid #2c2c2c; }
+    header { height: 44px; background: #181818; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid #2c2c2c; z-index: 10; }
     header h1 { font-size: 15px; font-weight: 600; }
-    #status { font-size: 12px; color: #ff9800; }
+    #mode-label { font-size: 12px; color: #00e676; font-weight: bold; }
 
-    #main-container { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #0d0d0d; }
+    #main-container { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #000; }
+    
+    /* 1. 실시간 카메라 뷰 */
+    #camera-view { width: 100%; height: 100%; position: absolute; top: 0; left: 0; display: flex; align-items: center; justify-content: center; }
+    #video { width: 100%; height: 100%; object-fit: cover; }
+    
+    /* 카메라 가이드 오버레이 */
+    #guide-overlay {
+      position: absolute;
+      top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+    #guide-box {
+      width: 86vw;
+      max-width: 360px;
+      aspect-ratio: 1.586 / 1;
+      border: 3px solid #00e676;
+      border-radius: 12px;
+      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
+      position: relative;
+    }
+    #guide-box::after {
+      content: '신분증을 초록색 사각형에 맞춰주세요';
+      position: absolute;
+      bottom: -32px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 13px;
+      color: #00e676;
+      white-space: nowrap;
+      background: rgba(0,0,0,0.7);
+      padding: 3px 8px;
+      border-radius: 4px;
+    }
+
+    /* 2. 수동 편집 캔버스 (앨범용) */
+    #editor-view { width: 100%; height: 100%; display: none; align-items: center; justify-content: center; position: absolute; top:0; left:0; }
     #editor-canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
 
     /* 모서리 확대경 */
     #loupe-container { 
-      position: absolute; 
-      bottom: 130px; 
-      right: 12px; 
-      width: 140px; 
-      height: 140px; 
-      border: 2.5px solid #00e676; 
-      border-radius: 10px; 
-      background: #181818; 
-      z-index: 50; 
-      display: none; 
-      pointer-events: none;
-      box-shadow: 0 6px 22px rgba(0,0,0,0.9);
-      overflow: hidden;
+      position: absolute; bottom: 130px; right: 12px; width: 130px; height: 130px; 
+      border: 2.5px solid #00e676; border-radius: 10px; background: #181818; 
+      z-index: 50; display: none; pointer-events: none; overflow: hidden;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.9);
     }
     #loupe-canvas { width: 100%; height: 100%; }
-    #loupe-label {
-      position: absolute;
-      top: 5px;
-      left: 6px;
-      font-size: 11px;
-      font-weight: bold;
-      color: #00e676;
-      background: rgba(0,0,0,0.8);
-      padding: 2px 6px;
-      border-radius: 4px;
-      z-index: 10;
-    }
+    #loupe-label { position: absolute; top: 4px; left: 6px; font-size: 11px; font-weight: bold; color: #00e676; background: rgba(0,0,0,0.8); padding: 2px 5px; border-radius: 4px; z-index: 10; }
 
-    /* 하단 패널 */
-    #control-panel { height: 120px; background: #181818; display: flex; align-items: center; justify-content: space-around; padding: 10px; border-top: 1px solid #2c2c2c; }
-    .dpad { display: grid; grid-template-columns: 50px 50px 50px; grid-template-rows: 50px 50px; gap: 4px; }
-    .dpad button { background: #2e2e2e; color: white; border: 1px solid #444; border-radius: 8px; font-size: 18px; font-weight: bold; }
+    /* 하단 조작 패널 */
+    #control-panel { height: 110px; background: #181818; display: flex; align-items: center; justify-content: space-around; padding: 10px; border-top: 1px solid #2c2c2c; z-index: 10; }
+    .dpad { display: none; grid-template-columns: 45px 45px 45px; grid-template-rows: 45px 45px; gap: 3px; }
+    .dpad button { background: #2e2e2e; color: white; border: 1px solid #444; border-radius: 8px; font-size: 16px; font-weight: bold; }
     .dpad button:active { background: #00e676; color: #000; }
     
-    .actions { display: flex; flex-direction: column; gap: 6px; width: 140px; }
-    .btn-row { display: flex; gap: 5px; width: 100%; }
-    .btn { height: 42px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-    .btn-camera { background: #2979ff; color: white; }
-    .btn-album { background: #424242; color: white; }
+    .actions { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 340px; }
+    .btn-row { display: flex; gap: 8px; width: 100%; }
+    .btn { height: 44px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .btn-camera { background: #00e676; color: black; font-size: 16px; font-weight: bold; }
+    .btn-album { background: #37474f; color: white; }
     .btn-warp { background: #00e676; color: black; font-size: 15px; font-weight: bold; }
     .btn-print { background: #9c27b0; color: white; }
     
+    /* 결과 모달 */
     #result-modal { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.96); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:200; }
     #result-canvas { max-width: 95vw; max-height: 65vh; object-fit: contain; border: 2px solid #fff; border-radius: 6px; }
 
-    /* A4 실제 규격(85.6mm x 53.98mm) 1:1 출력 전용 */
+    /* A4 실제 규격(85.6mm x 53.98mm) 1:1 인쇄 */
     #print-area { display: none; }
     @media print {
       @page { size: A4 portrait; margin: 0; }
@@ -89,39 +110,59 @@
 <body>
 
   <header>
-    <h1>신분증 스캐너</h1>
-    <span id="status">로딩 중...</span>
+    <h1>신분증 자동 스캐너</h1>
+    <span id="mode-label">⚡ 실시간 자동 모드</span>
   </header>
 
   <div id="main-container">
-    <canvas id="editor-canvas"></canvas>
-    <div id="loupe-container">
-      <span id="loupe-label">모서리</span>
-      <canvas id="loupe-canvas" width="140" height="140"></canvas>
+    <!-- 1. 실시간 카메라 & 가이드 -->
+    <div id="camera-view">
+      <video id="video" autoplay playsinline muted></video>
+      <div id="guide-overlay">
+        <div id="guide-box"></div>
+      </div>
+    </div>
+
+    <!-- 2. 앨범 사진 수동 편집기 -->
+    <div id="editor-view">
+      <canvas id="editor-canvas"></canvas>
+      <div id="loupe-container">
+        <span id="loupe-label">모서리</span>
+        <canvas id="loupe-canvas" width="130" height="130"></canvas>
+      </div>
     </div>
   </div>
 
+  <!-- 하단 컨트롤 패널 -->
   <div id="control-panel">
-    <div class="dpad">
+    <!-- 수동 모드 시 나타나는 D-Pad -->
+    <div class="dpad" id="dpad-box">
       <div></div><button onclick="nudge(0,-2)">▲</button><div></div>
       <button onclick="nudge(-2,0)">◀</button><button onclick="nudge(0,2)">▼</button><button onclick="nudge(2,0)">▶</button>
     </div>
+
     <div class="actions">
-      <input type="file" id="camera-input" accept="image/*" capture="environment" style="display: none;">
       <input type="file" id="album-input" accept="image/*" style="display: none;">
       
-      <div class="btn-row">
-        <button class="btn btn-camera" style="flex: 1;" onclick="document.getElementById('camera-input').click()">📷 촬영</button>
-        <button class="btn btn-album" style="flex: 1;" onclick="document.getElementById('album-input').click()">🖼️ 앨범</button>
+      <!-- 실시간 카메라 모드 버튼 -->
+      <div class="btn-row" id="cam-actions">
+        <button class="btn btn-album" style="flex: 1;" onclick="document.getElementById('album-input').click()">🖼️ 앨범 선택</button>
+        <button class="btn btn-camera" style="flex: 2;" onclick="captureFromGuide()">📷 즉시 자동 스캔</button>
       </div>
-      <button class="btn btn-warp" id="btn-scan" onclick="processScan()">완료</button>
+
+      <!-- 수동 편집 모드 버튼 -->
+      <div class="btn-row" id="edit-actions" style="display: none;">
+        <button class="btn btn-album" style="flex: 1;" onclick="backToCamera()">📷 카메라로</button>
+        <button class="btn btn-warp" style="flex: 1.5;" onclick="processManualScan()">완료</button>
+      </div>
     </div>
   </div>
 
+  <!-- 결과 화면 -->
   <div id="result-modal">
     <canvas id="result-canvas"></canvas>
     <div style="display: flex; gap: 8px; margin-top: 18px; width: 92%; max-width: 400px;">
-      <button class="btn btn-camera" style="flex: 1;" onclick="document.getElementById('result-modal').style.display='none'">다시 수정</button>
+      <button class="btn btn-album" style="flex: 1;" onclick="document.getElementById('result-modal').style.display='none'">다시 촬영</button>
       <button class="btn btn-print" style="flex: 1.2;" onclick="printA4()">🖨️ A4 인쇄</button>
       <button class="btn btn-warp" style="flex: 1;" onclick="downloadResult()">저장(JPG)</button>
     </div>
@@ -130,187 +171,95 @@
   <div id="print-area"><img id="print-img" alt="신분증 인쇄"></div>
 
   <script>
-    let cvReady = false;
-    let originalImg = null;
-    let points = [];
-    let activeIdx = 0;
-    let scaleX = 1, scaleY = 1;
+    let cvReady = false, stream = null;
+    let originalImg = null, points = [], activeIdx = 0, scaleX = 1, scaleY = 1;
     const cornerNames = ["좌상단 ┌", "우상단 ┐", "우하단 ┘", "좌하단 └"];
 
-    function onOpenCvReady() {
-      cvReady = true;
-      document.getElementById('status').innerText = "준비 완료";
-      document.getElementById('status').style.color = "#00e676";
+    function onOpenCvReady() { cvReady = true; }
+
+    // 1. 실시간 후면 카메라 시작
+    async function startCamera() {
+      try {
+        if (stream) stream.getTracks().forEach(t => t.stop());
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
+          audio: false
+        });
+        document.getElementById('video').srcObject = stream;
+      } catch (err) {
+        alert("카메라를 실행할 수 없습니다. 권한을 허용해주세요.");
+      }
+    }
+    window.addEventListener('load', startCamera);
+
+    // 2. 가이드 틀 영역만 실물 신분증 300 DPI(1011x638)로 즉시 크롭
+    function captureFromGuide() {
+      const video = document.getElementById('video');
+      const guideBox = document.getElementById('guide-box');
+      if (!video.videoWidth) return alert("카메라 화면 로딩 중입니다.");
+
+      const vRect = video.getBoundingClientRect();
+      const gRect = guideBox.getBoundingClientRect();
+
+      // 화면에 표시된 비디오 실제 비율과 원본 해상도 매핑
+      const scale = Math.max(video.videoWidth / vRect.width, video.videoHeight / vRect.height);
+      const displayedW = video.videoWidth / scale;
+      const displayedH = video.videoHeight / scale;
+      const offsetX = (vRect.width - displayedW) / 2;
+      const offsetY = (vRect.height - displayedH) / 2;
+
+      const cropX = (gRect.left - vRect.left - offsetX) * scale;
+      const cropY = (gRect.top - vRect.top - offsetY) * scale;
+      const cropW = gRect.width * scale;
+      const cropH = gRect.height * scale;
+
+      const rCanvas = document.getElementById('result-canvas');
+      rCanvas.width = 1011;
+      rCanvas.height = 638;
+      const ctx = rCanvas.getContext('2d');
+
+      ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, 1011, 638);
+      document.getElementById('result-modal').style.display = 'flex';
     }
 
-    function handleFile(file) {
+    // 3. 앨범 사진 불러오기 (수동 편집 모드 전환)
+    document.getElementById('album-input').onchange = (e) => {
+      const file = e.target.files[0];
       if (!file) return;
-      const status = document.getElementById('status');
-      status.innerText = "분석 중...";
-      status.style.color = "#ffea00";
 
-      const url = URL.createObjectURL(file);
-      const tempImg = new Image();
-      
-      tempImg.onload = () => {
-        const maxDim = 1800;
-        let w = tempImg.width;
-        let h = tempImg.height;
-
-        if (w > maxDim || h > maxDim) {
-          if (w > h) {
-            h = Math.round((h * maxDim) / w);
-            w = maxDim;
-          } else {
-            w = Math.round((w * maxDim) / h);
-            h = maxDim;
-          }
-        }
-
-        const memCanvas = document.createElement('canvas');
-        memCanvas.width = w;
-        memCanvas.height = h;
-        const memCtx = memCanvas.getContext('2d');
-        memCtx.drawImage(tempImg, 0, 0, w, h);
-
-        originalImg = memCanvas;
-        URL.revokeObjectURL(url);
-
-        initCanvas();
-        status.innerText = "준비 완료";
-        status.style.color = "#00e676";
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        const tempImg = new Image();
+        tempImg.onload = () => {
+          originalImg = tempImg;
+          switchToEditMode();
+        };
+        tempImg.src = event.target.result;
       };
-
-      tempImg.src = url;
-    }
-
-    const camInput = document.getElementById('camera-input');
-    const albInput = document.getElementById('album-input');
-
-    camInput.onchange = (e) => {
-      if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
-      e.target.value = '';
-    };
-    albInput.onchange = (e) => {
-      if (e.target.files && e.target.files[0]) handleFile(e.target.files[0]);
+      reader.readAsDataURL(file);
       e.target.value = '';
     };
 
-    function initCanvas() {
+    function switchToEditMode() {
+      document.getElementById('camera-view').style.display = 'none';
+      document.getElementById('editor-view').style.display = 'flex';
+      document.getElementById('cam-actions').style.display = 'none';
+      document.getElementById('edit-actions').style.display = 'flex';
+      document.getElementById('dpad-box').style.display = 'grid';
+      document.getElementById('mode-label').innerText = "✏️ 앨범 정밀 편집";
+
       const container = document.getElementById('main-container');
       const scale = Math.min(container.clientWidth / originalImg.width, container.clientHeight / originalImg.height);
       const canvas = document.getElementById('editor-canvas');
-      
       canvas.width = Math.round(originalImg.width * scale);
       canvas.height = Math.round(originalImg.height * scale);
       scaleX = originalImg.width / canvas.width;
       scaleY = originalImg.height / canvas.height;
 
-      autoDetectSmart();
-    }
-
-    // 흰 배경 및 빛 반사 극복 다단계 자동 감지 알고리즘
-    function autoDetectSmart() {
-      let detected = false;
-      if (cvReady && originalImg) {
-        try {
-          const procW = 450;
-          const procH = Math.round((originalImg.height / originalImg.width) * procW);
-          const procCanvas = document.createElement('canvas');
-          procCanvas.width = procW;
-          procCanvas.height = procH;
-          const pCtx = procCanvas.getContext('2d');
-          pCtx.drawImage(originalImg, 0, 0, procW, procH);
-
-          let src = cv.imread(procCanvas);
-          let gray = new cv.Mat();
-          cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
-
-          let blurred = new cv.Mat();
-          cv.GaussianBlur(gray, blurred, new cv.Size(5, 5), 0);
-
-          let edgesList = [];
-          let kernel = cv.getStructuringElement(cv.MORPH_RECT, new cv.Size(9, 9));
-
-          // 1) Canny 엣지 + Morph Close
-          let edged = new cv.Mat();
-          cv.Canny(blurred, edged, 20, 90);
-          let closed1 = new cv.Mat();
-          cv.morphologyEx(edged, closed1, cv.MORPH_CLOSE, kernel);
-          edgesList.push(closed1);
-
-          // 2) Otsu Threshold + Morph Close
-          let otsu = new cv.Mat();
-          cv.threshold(blurred, otsu, 0, 255, cv.THRESH_BINARY_INV + cv.THRESH_OTSU);
-          let closed2 = new cv.Mat();
-          cv.morphologyEx(otsu, closed2, cv.MORPH_CLOSE, kernel);
-          edgesList.push(closed2);
-
-          let candidates = [];
-          const totalArea = procW * procH;
-
-          edgesList.forEach(mat => {
-            let contours = new cv.MatVector(), hierarchy = new cv.Mat();
-            cv.findContours(mat, contours, hierarchy, cv.RETR_LIST, cv.CHAIN_APPROX_SIMPLE);
-
-            for (let i = 0; i < contours.size(); ++i) {
-              let cnt = contours.get(i);
-              let area = cv.contourArea(cnt);
-              if (area > totalArea * 0.06 && area < totalArea * 0.90) {
-                let rot = cv.minAreaRect(cnt);
-                let w = rot.size.width, h = rot.size.height;
-                let aspect = Math.max(w, h) / Math.min(w, h);
-                // 신분증 비율(1.586) 적합도 검사
-                if (aspect >= 1.20 && aspect <= 2.0) {
-                  let aspectScore = 1.0 - Math.abs(aspect - 1.586);
-                  let areaScore = area / totalArea;
-                  let score = (aspectScore * 3.0) + (areaScore * 1.5);
-
-                  let hull = new cv.Mat();
-                  cv.convexHull(cnt, hull, false, true);
-                  let rotHull = cv.minAreaRect(hull);
-                  let vertices = cv.RotatedRect.points(rotHull);
-                  let pts = vertices.map(v => ({ x: v.x, y: v.y }));
-                  candidates.push({ score, pts });
-                  hull.delete();
-                }
-              }
-            }
-            contours.delete(); hierarchy.delete();
-          });
-
-          src.delete(); gray.delete(); blurred.delete(); edged.delete();
-          closed1.delete(); otsu.delete(); closed2.delete(); kernel.delete();
-
-          if (candidates.length > 0) {
-            candidates.sort((a, b) => b.score - a.score);
-            let bestPts = candidates[0].pts;
-            const rX = editorCanvas.width / procW;
-            const rY = editorCanvas.height / procH;
-            points = orderPoints(bestPts.map(p => ({
-              x: Math.max(0, Math.min(editorCanvas.width, p.x * rX)),
-              y: Math.max(0, Math.min(editorCanvas.height, p.y * rY))
-            })));
-            detected = true;
-          }
-        } catch (err) {
-          detected = false;
-        }
-      }
-
-      if (!detected) setDefaultCardPoints();
-      activeIdx = 0;
-      render();
-    }
-
-    function setDefaultCardPoints() {
-      const canvas = document.getElementById('editor-canvas');
-      const w = canvas.width;
-      const h = canvas.height;
-      const cardW = Math.min(w * 0.65, h * 0.65 * 1.586);
+      const w = canvas.width, h = canvas.height;
+      const cardW = Math.min(w * 0.75, h * 0.75 * 1.586);
       const cardH = cardW / 1.586;
-      const startX = (w - cardW) / 2;
-      const startY = (h - cardH) / 2;
+      const startX = (w - cardW) / 2, startY = (h - cardH) / 2;
 
       points = [
         { x: startX, y: startY },
@@ -318,24 +267,25 @@
         { x: startX + cardW, y: startY + cardH },
         { x: startX, y: startY + cardH }
       ];
+      activeIdx = 0;
+      render();
     }
 
-    function orderPoints(pts) {
-      const sum = pts.map(p => p.x + p.y);
-      const diff = pts.map(p => p.y - p.x);
-      return [
-        pts[sum.indexOf(Math.min(...sum))],
-        pts[diff.indexOf(Math.min(...diff))],
-        pts[sum.indexOf(Math.max(...sum))],
-        pts[diff.indexOf(Math.max(...diff))]
-      ];
+    function backToCamera() {
+      document.getElementById('editor-view').style.display = 'none';
+      document.getElementById('camera-view').style.display = 'flex';
+      document.getElementById('edit-actions').style.display = 'none';
+      document.getElementById('cam-actions').style.display = 'flex';
+      document.getElementById('dpad-box').style.display = 'none';
+      document.getElementById('mode-label').innerText = "⚡ 실시간 자동 모드";
+      startCamera();
     }
 
+    // 수동 편집기 렌더링 & 확대경
     function render() {
       const canvas = document.getElementById('editor-canvas');
       if (!canvas || !originalImg) return;
       const ctx = canvas.getContext('2d');
-
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(originalImg, 0, 0, canvas.width, canvas.height);
 
@@ -357,15 +307,9 @@
         ctx.strokeStyle = '#ffffff';
         ctx.lineWidth = 2.5;
         ctx.stroke();
-
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 3, 0, Math.PI * 2);
-        ctx.fillStyle = '#000';
-        ctx.fill();
       });
 
-      if (activeIdx !== -1) updateLoupe();
-      else document.getElementById('loupe-container').style.display = 'none';
+      updateLoupe();
     }
 
     function updateLoupe() {
@@ -376,42 +320,29 @@
       loupe.style.display = 'block';
 
       const p = points[activeIdx];
-      const cx = 70, cy = 70;
-      const viewSize = 56;
-      const cropW = viewSize * scaleX;
-      const cropH = viewSize * scaleY;
-      const cropX = (p.x * scaleX) - (cropW / 2);
-      const cropY = (p.y * scaleY) - (cropH / 2);
+      const cx = 65, cy = 65;
+      const viewSize = 50;
+      const cropW = viewSize * scaleX, cropH = viewSize * scaleY;
+      const cropX = (p.x * scaleX) - (cropW / 2), cropY = (p.y * scaleY) - (cropH / 2);
 
       lCtx.fillStyle = '#181818';
-      lCtx.fillRect(0, 0, 140, 140);
+      lCtx.fillRect(0, 0, 130, 130);
       try {
-        lCtx.drawImage(originalImg, cropX, cropY, cropW, cropH, 0, 0, 140, 140);
+        lCtx.drawImage(originalImg, cropX, cropY, cropW, cropH, 0, 0, 130, 130);
       } catch(e){}
 
       lCtx.save();
       lCtx.lineWidth = 3.5;
       lCtx.strokeStyle = '#ff1744';
-      lCtx.shadowColor = '#000';
-      lCtx.shadowBlur = 4;
       lCtx.beginPath();
-
-      const arm = 32;
-      if (activeIdx === 0) {
-        lCtx.moveTo(cx + arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy + arm);
-      } else if (activeIdx === 1) {
-        lCtx.moveTo(cx - arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy + arm);
-      } else if (activeIdx === 2) {
-        lCtx.moveTo(cx - arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy - arm);
-      } else if (activeIdx === 3) {
-        lCtx.moveTo(cx + arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy - arm);
-      }
+      const arm = 30;
+      if (activeIdx === 0) { lCtx.moveTo(cx + arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy + arm); }
+      else if (activeIdx === 1) { lCtx.moveTo(cx - arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy + arm); }
+      else if (activeIdx === 2) { lCtx.moveTo(cx - arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy - arm); }
+      else if (activeIdx === 3) { lCtx.moveTo(cx + arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy - arm); }
       lCtx.stroke();
-
       lCtx.fillStyle = '#ffea00';
-      lCtx.beginPath();
-      lCtx.arc(cx, cy, 3.5, 0, Math.PI * 2);
-      lCtx.fill();
+      lCtx.beginPath(); lCtx.arc(cx, cy, 3, 0, Math.PI * 2); lCtx.fill();
       lCtx.restore();
     }
 
@@ -424,59 +355,43 @@
     }
 
     const canvas = document.getElementById('editor-canvas');
-
     function handleTouch(e) {
       const rect = canvas.getBoundingClientRect();
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      const x = clientX - rect.left;
-      const y = clientY - rect.top;
-      const found = points.findIndex(p => Math.hypot(p.x - x, p.y - y) < 45);
-      if (found !== -1) {
-        activeIdx = found;
-        render();
-      }
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      const cy = e.touches ? e.touches[0].clientY : e.clientY;
+      const found = points.findIndex(p => Math.hypot(p.x - (cx - rect.left), p.y - (cy - rect.top)) < 45);
+      if (found !== -1) { activeIdx = found; render(); }
     }
-
     function handleDrag(e) {
       if (activeIdx === -1) return;
       e.preventDefault();
       const rect = canvas.getBoundingClientRect();
-      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
-      const x = clientX - rect.left;
-      const y = clientY - rect.top;
-      points[activeIdx].x = Math.max(0, Math.min(canvas.width, x));
-      points[activeIdx].y = Math.max(0, Math.min(canvas.height, y));
+      const cx = e.touches ? e.touches[0].clientX : e.clientX;
+      const cy = e.touches ? e.touches[0].clientY : e.clientY;
+      points[activeIdx].x = Math.max(0, Math.min(canvas.width, cx - rect.left));
+      points[activeIdx].y = Math.max(0, Math.min(canvas.height, cy - rect.top));
       render();
     }
-
     canvas.addEventListener('mousedown', handleTouch);
     canvas.addEventListener('touchstart', handleTouch);
     canvas.addEventListener('mousemove', handleDrag);
     canvas.addEventListener('touchmove', handleDrag, {passive:false});
 
-    function processScan() {
+    function processManualScan() {
       if (!cvReady || !originalImg) return;
-      const dstW = 1011, dstH = 638; // 300 DPI 실물 규격 (85.6mm : 53.98mm)
-      try {
-        const srcMat = cv.imread(originalImg);
-        const dstMat = new cv.Mat();
-        const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, points.flatMap(p => [p.x * scaleX, p.y * scaleY]));
-        const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, dstW, 0, dstW, dstH, 0, dstH]);
-        const M = cv.getPerspectiveTransform(srcTri, dstTri);
-        cv.warpPerspective(srcMat, dstMat, M, new cv.Size(dstW, dstH), cv.INTER_LINEAR);
-        
-        const rCanvas = document.getElementById('result-canvas');
-        rCanvas.width = dstW;
-        rCanvas.height = dstH;
-        cv.imshow(rCanvas, dstMat);
-        
-        document.getElementById('result-modal').style.display = 'flex';
-        srcMat.delete(); dstMat.delete(); srcTri.delete(); dstTri.delete(); M.delete();
-      } catch (err) {
-        alert("보정 중 오류가 발생했습니다: " + err);
-      }
+      const dstW = 1011, dstH = 638;
+      const srcMat = cv.imread(originalImg);
+      const dstMat = new cv.Mat();
+      const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, points.flatMap(p => [p.x * scaleX, p.y * scaleY]));
+      const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, dstW, 0, dstW, dstH, 0, dstH]);
+      const M = cv.getPerspectiveTransform(srcTri, dstTri);
+      cv.warpPerspective(srcMat, dstMat, M, new cv.Size(dstW, dstH), cv.INTER_LINEAR);
+      
+      const rCanvas = document.getElementById('result-canvas');
+      rCanvas.width = dstW; rCanvas.height = dstH;
+      cv.imshow(rCanvas, dstMat);
+      document.getElementById('result-modal').style.display = 'flex';
+      srcMat.delete(); dstMat.delete(); srcTri.delete(); dstTri.delete(); M.delete();
     }
 
     function downloadResult() {
@@ -490,9 +405,7 @@
       const dataUrl = document.getElementById('result-canvas').toDataURL('image/jpeg', 1.0);
       const pImg = document.getElementById('print-img');
       pImg.src = dataUrl;
-      pImg.onload = () => {
-        window.print();
-      };
+      pImg.onload = () => window.print();
     }
   </script>
 </body>
