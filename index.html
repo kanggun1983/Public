@@ -3,41 +3,31 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>고화질 신분증 스캐너</title>
+  <title>신분증 정밀 스캐너</title>
   <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
-    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #000; color: #fff; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0d0d0d; color: #fff; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
     
-    header { height: 44px; background: #181818; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #2c2c2c; z-index: 20; }
+    header { height: 44px; background: #181818; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid #2c2c2c; z-index: 20; }
     header h1 { font-size: 15px; font-weight: 600; }
     #status-badge { font-size: 11px; font-weight: bold; color: #00e676; background: #222; padding: 3px 8px; border-radius: 12px; border: 1px solid #333; }
 
     #main-container { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #000; }
     
-    /* 1. 카메라 화면 */
-    #camera-view { width: 100%; height: 100%; position: absolute; top: 0; left: 0; display: flex; align-items: center; justify-content: center; }
-    #video { width: 100%; height: 100%; object-fit: cover; }
-    
-    #guide-overlay {
-      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-      pointer-events: none; display: flex; flex-direction: column;
-      align-items: center; justify-content: center;
+    /* 1. 사진 불러오기 전 초기 화면 */
+    #upload-view {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px; width: 85%; max-width: 340px; padding: 36px 20px;
+      border: 2px dashed #444; border-radius: 16px; background: #141414; text-align: center; cursor: pointer;
     }
-    #guide-box {
-      width: 86vw; max-width: 360px; aspect-ratio: 1.586 / 1;
-      border: 3.5px solid #00e676; border-radius: 12px;
-      box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
-      position: relative;
-    }
-    #guide-msg {
-      margin-top: 20px; font-size: 13px; color: #00e676;
-      background: rgba(0,0,0,0.85); padding: 5px 14px; border-radius: 20px;
-      font-weight: 500; text-align: center;
-    }
+    #upload-view:active { border-color: #00e676; background: #1a1a1a; }
+    .upload-icon { font-size: 48px; }
+    .upload-title { font-size: 16px; font-weight: bold; color: #fff; }
+    .upload-desc { font-size: 12px; color: #888; line-height: 1.5; }
 
-    /* 2. 편집 화면 */
-    #editor-view { width: 100%; height: 100%; display: none; align-items: center; justify-content: center; position: absolute; top:0; left:0; background: #0d0d0d; }
+    /* 2. 사진 편집 화면 */
+    #editor-view { width: 100%; height: 100%; display: none; align-items: center; justify-content: center; position: absolute; top: 0; left: 0; }
     #editor-canvas { max-width: 100%; max-height: 100%; object-fit: contain; touch-action: none; }
 
     /* 4배율 초정밀 확대경 */
@@ -51,18 +41,17 @@
     #loupe-canvas { width: 100%; height: 100%; }
     #loupe-label { position: absolute; top: 4px; left: 6px; font-size: 11px; font-weight: bold; color: #00e676; background: rgba(0,0,0,0.8); padding: 2px 6px; border-radius: 4px; z-index: 10; }
 
-    /* 하단 패널 */
-    #control-panel { background: #181818; display: flex; flex-direction: column; padding: 6px 10px; border-top: 1px solid #2c2c2c; z-index: 30; gap: 6px; }
+    /* 하단 조작 패널 */
+    #control-panel { background: #181818; display: none; flex-direction: column; padding: 6px 10px; border-top: 1px solid #2c2c2c; z-index: 30; gap: 6px; }
     
-    /* 모서리 선택 바 + 속도 전환 */
-    #corner-selector { display: none; align-items: center; justify-content: space-between; gap: 4px; width: 100%; max-width: 380px; margin: 0 auto; }
-    .corner-btn { flex: 1; height: 30px; background: #262626; color: #bbb; border: 1px solid #444; border-radius: 6px; font-size: 11px; font-weight: bold; }
+    #corner-selector { display: flex; align-items: center; justify-content: space-between; gap: 4px; width: 100%; max-width: 380px; margin: 0 auto; }
+    .corner-btn { flex: 1; height: 32px; background: #262626; color: #bbb; border: 1px solid #444; border-radius: 6px; font-size: 11px; font-weight: bold; }
     .corner-btn.active { background: #00e676; color: #000; border-color: #00e676; }
-    #step-btn { width: 55px; height: 30px; background: #ff9800; color: #000; border: none; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; }
+    #step-btn { width: 55px; height: 32px; background: #ff9800; color: #000; border: none; border-radius: 6px; font-size: 11px; font-weight: bold; cursor: pointer; }
 
     #panel-main { display: flex; align-items: center; justify-content: space-between; width: 100%; max-width: 380px; margin: 0 auto; }
 
-    .dpad { display: none; grid-template-columns: 44px 44px 44px; grid-template-rows: 44px 44px; gap: 3px; }
+    .dpad { display: grid; grid-template-columns: 44px 44px 44px; grid-template-rows: 44px 44px; gap: 3px; }
     .dpad button { background: #2e2e2e; color: white; border: 1px solid #444; border-radius: 8px; font-size: 17px; font-weight: bold; touch-action: manipulation; }
     .dpad button:active { background: #00e676; color: #000; }
     
@@ -74,14 +63,13 @@
       touch-action: manipulation; -webkit-tap-highlight-color: transparent;
     }
     .btn:active { opacity: 0.8; transform: scale(0.98); }
-    .btn-camera { background: #00e676; color: black; font-size: 15px; font-weight: bold; }
     .btn-album { background: #37474f; color: white; }
     .btn-warp { background: #00e676; color: black; font-size: 14px; font-weight: bold; }
     .btn-print { background: #9c27b0; color: white; }
 
     #toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(0,230,118,0.95); color: #000; padding: 8px 18px; border-radius: 20px; font-size: 13px; font-weight: bold; z-index: 9999; display: none; }
 
-    /* A4 실제 규격 1:1 출력 */
+    /* A4 실제 규격 1:1 출력 전용 */
     #print-area { display: none; }
     @media print {
       @page { size: A4 portrait; margin: 0; }
@@ -106,21 +94,23 @@
 <body>
 
   <header>
-    <h1>신분증 고화질 스캐너</h1>
-    <span id="status-badge">초정밀 모드</span>
+    <h1>신분증 정밀 스캐너</h1>
+    <span id="status-badge">준비 완료</span>
   </header>
 
   <div id="toast">저장 완료!</div>
 
+  <input type="file" id="album-input" accept="image/*" style="display: none;">
+
   <div id="main-container">
-    <div id="camera-view">
-      <video id="video" autoplay playsinline muted></video>
-      <div id="guide-overlay">
-        <div id="guide-box"></div>
-        <div id="guide-msg">신분증을 맞추고 [📸 촬영]을 누르세요</div>
-      </div>
+    <!-- 초기 업로드 영역 -->
+    <div id="upload-view" onclick="document.getElementById('album-input').click()">
+      <div class="upload-icon">🖼️</div>
+      <div class="upload-title">갤러리에서 사진 선택</div>
+      <div class="upload-desc">스캔할 신분증 사진을 불러오면<br>자동으로 정밀 편집 화면이 열립니다.</div>
     </div>
 
+    <!-- 모서리 편집 화면 -->
     <div id="editor-view">
       <canvas id="editor-canvas"></canvas>
       <div id="loupe-container">
@@ -130,6 +120,7 @@
     </div>
   </div>
 
+  <!-- 하단 조작 패널 -->
   <div id="control-panel">
     <div id="corner-selector">
       <button class="corner-btn active" onclick="selectCorner(0)">┌ 좌상</button>
@@ -150,16 +141,8 @@
       </div>
 
       <div class="actions">
-        <input type="file" id="native-cam-input" accept="image/*" capture="environment" style="display: none;">
-        <input type="file" id="album-input" accept="image/*" style="display: none;">
-        
-        <div class="btn-row" id="cam-actions">
-          <button class="btn btn-album" style="flex: 1;" onclick="document.getElementById('album-input').click()">🖼️ 앨범</button>
-          <button class="btn btn-camera" style="flex: 2;" onclick="document.getElementById('native-cam-input').click()">📸 고화질 촬영</button>
-        </div>
-
-        <div class="btn-row" id="edit-actions" style="display: none;">
-          <button class="btn btn-album" style="flex: 0.8;" onclick="backToCamera()">📷 재촬영</button>
+        <div class="btn-row">
+          <button class="btn btn-album" style="flex: 0.9;" onclick="document.getElementById('album-input').click()">🖼️ 사진 변경</button>
           <button class="btn btn-print" style="flex: 1;" onclick="printA4()">🖨️ A4 인쇄</button>
           <button class="btn btn-warp" style="flex: 1.4;" onclick="saveA4Document()">💾 저장(JPG)</button>
         </div>
@@ -170,9 +153,9 @@
   <div id="print-area"><img id="print-img" alt="신분증 인쇄"></div>
 
   <script>
-    let cvReady = false, stream = null;
+    let cvReady = false;
     let originalImg = null, points = [], activeIdx = 0, scaleX = 1, scaleY = 1;
-    let stepSize = 0.5; // 기본 초정밀 단위 (0.5px)
+    let stepSize = 0.5;
     let nudgeTimer = null, nudgeInterval = null;
     const cornerNames = ["좌상단 ┌", "우상단 ┐", "우하단 ┘", "좌하단 └"];
 
@@ -200,20 +183,11 @@
       }
     }
 
-    async function startCamera() {
-      try {
-        if (stream) stream.getTracks().forEach(t => t.stop());
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
-          audio: false
-        });
-        document.getElementById('video').srcObject = stream;
-      } catch (err) {}
-    }
-    window.addEventListener('load', startCamera);
-
-    function loadFullResImage(file) {
+    // 갤러리 원본 고화질 로드
+    document.getElementById('album-input').onchange = (e) => {
+      const file = e.target.files[0];
       if (!file) return;
+
       const reader = new FileReader();
       reader.onload = (event) => {
         const tempImg = new Image();
@@ -224,24 +198,13 @@
         tempImg.src = event.target.result;
       };
       reader.readAsDataURL(file);
-    }
-
-    document.getElementById('native-cam-input').onchange = (e) => {
-      loadFullResImage(e.target.files[0]);
-      e.target.value = '';
-    };
-    document.getElementById('album-input').onchange = (e) => {
-      loadFullResImage(e.target.files[0]);
       e.target.value = '';
     };
 
     function openEditorView() {
-      document.getElementById('camera-view').style.display = 'none';
+      document.getElementById('upload-view').style.display = 'none';
       document.getElementById('editor-view').style.display = 'flex';
-      document.getElementById('cam-actions').style.display = 'none';
-      document.getElementById('edit-actions').style.display = 'flex';
-      document.getElementById('dpad-box').style.display = 'grid';
-      document.getElementById('corner-selector').style.display = 'flex';
+      document.getElementById('control-panel').style.display = 'flex';
 
       const container = document.getElementById('main-container');
       const scale = Math.min(container.clientWidth / originalImg.width, container.clientHeight / originalImg.height);
@@ -251,6 +214,7 @@
       scaleX = originalImg.width / canvas.width;
       scaleY = originalImg.height / canvas.height;
 
+      // 신분증 표준 비율(1.586 : 1) 박스 중앙 배치
       const w = canvas.width, h = canvas.height;
       const cardW = Math.min(w * 0.80, h * 0.80 * 1.586);
       const cardH = cardW / 1.586;
@@ -275,16 +239,6 @@
         else b.classList.remove('active');
       });
       render();
-    }
-
-    function backToCamera() {
-      document.getElementById('editor-view').style.display = 'none';
-      document.getElementById('camera-view').style.display = 'flex';
-      document.getElementById('edit-actions').style.display = 'none';
-      document.getElementById('cam-actions').style.display = 'flex';
-      document.getElementById('dpad-box').style.display = 'none';
-      document.getElementById('corner-selector').style.display = 'none';
-      startCamera();
     }
 
     function render() {
@@ -317,7 +271,7 @@
       updateLoupe();
     }
 
-    // 4배율 초정밀 확대경
+    // 4배율 정밀 확대경
     function updateLoupe() {
       const loupe = document.getElementById('loupe-container');
       const lCanvas = document.getElementById('loupe-canvas');
@@ -339,7 +293,7 @@
       }
 
       const cx = 70, cy = 70;
-      const viewSize = 35; // 4배율 확대 (35px 범위를 140px로 투영)
+      const viewSize = 35;
       const cropW = viewSize * scaleX, cropH = viewSize * scaleY;
       const cropX = (p.x * scaleX) - (cropW / 2), cropY = (p.y * scaleY) - (cropH / 2);
 
@@ -349,7 +303,6 @@
         lCtx.drawImage(originalImg, cropX, cropY, cropW, cropH, 0, 0, 140, 140);
       } catch(e){}
 
-      // 조준선
       lCtx.save();
       lCtx.lineWidth = 3;
       lCtx.strokeStyle = '#ff1744';
@@ -361,13 +314,12 @@
       else if (activeIdx === 3) { lCtx.moveTo(cx + arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy - arm); }
       lCtx.stroke();
       
-      // 초정밀 센터 포인트
       lCtx.fillStyle = '#ffea00';
       lCtx.beginPath(); lCtx.arc(cx, cy, 2.5, 0, Math.PI * 2); lCtx.fill();
       lCtx.restore();
     }
 
-    // 0.5px 미세조정 + 롱프레스 연속 이동 엔진
+    // 0.5px 미세 이동 & 연속 롱프레스
     function applyNudge(dirX, dirY) {
       if (activeIdx === -1) return;
       const canvas = document.getElementById('editor-canvas');
@@ -381,7 +333,7 @@
       nudgeTimer = setTimeout(() => {
         nudgeInterval = setInterval(() => {
           applyNudge(dirX, dirY);
-        }, 50); // 1초에 20회 부드럽게 연속 이동
+        }, 50);
       }, 300);
     }
 
@@ -469,7 +421,7 @@
       return outCanvas;
     }
 
-    // A4 스캔 문서 생성
+    // A4 스캔 문서 생성 (2480x3508 순백색)
     function getA4DocumentCanvas() {
       const cardCanvas = getCleanCardCanvas();
       const a4W = 2480, a4H = 3508;
@@ -503,7 +455,6 @@
           try {
             await navigator.share({ files: [file], title: '신분증 A4 스캔본' });
             showToast("A4 스캔본 저장 완료!");
-            backToCamera();
             return;
           } catch (err) {
             if (err.name === 'AbortError') return;
@@ -520,7 +471,6 @@
         setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
 
         showToast("A4 스캔본 저장 완료!");
-        backToCamera();
       }, 'image/jpeg', 0.95);
     }
 
