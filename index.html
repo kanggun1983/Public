@@ -8,32 +8,23 @@
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; touch-action: none; }
     body { font-family: -apple-system, sans-serif; background: #000; color: #fff; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
-    
     #main-container { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
     #editor-canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
-
-    /* 돋보기 박스 */
-    #loupe-container { position: absolute; bottom: 130px; right: 10px; width: 150px; height: 150px; border: 3px solid #ff1744; background: #000; z-index: 50; display: none; }
+    #loupe-container { position: absolute; bottom: 130px; right: 10px; width: 150px; height: 150px; border: 3px solid #ff1744; background: #000; z-index: 50; display: none; pointer-events: none; }
     #loupe-canvas { width: 100%; height: 100%; }
-    
-    /* 컨트롤러 패널 */
     #control-panel { height: 120px; background: #1e1e1e; display: flex; align-items: center; justify-content: space-around; padding: 10px; border-top: 1px solid #333; }
     .dpad { display: grid; grid-template-columns: 50px 50px 50px; grid-template-rows: 50px 50px; gap: 4px; }
     .dpad button { background: #333; border: 1px solid #555; color: white; border-radius: 8px; font-weight: bold; }
     .dpad button:active { background: #00e676; color: #000; }
-    
     .actions { display: flex; flex-direction: column; gap: 5px; width: 120px; }
     .btn { height: 45px; border-radius: 8px; border: none; font-weight: 600; cursor: pointer; }
     .btn-shoot { background: #2979ff; color: white; }
     .btn-warp { background: #00e676; color: black; }
-    
     #result-modal { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:200; }
-    /* 핵심 수정: 결과 이미지가 잘리지 않게 설정 */
     #result-canvas { max-width: 95vw; max-height: 70vh; object-fit: contain; border: 2px solid #fff; }
   </style>
 </head>
 <body>
-
   <div id="main-container">
     <canvas id="editor-canvas"></canvas>
     <div id="loupe-container"><canvas id="loupe-canvas" width="150" height="150"></canvas></div>
@@ -46,7 +37,7 @@
     </div>
     <div class="actions">
       <input type="file" id="file-input" accept="image/*" style="display: none;">
-      <button class="btn btn-shoot" onclick="document.getElementById('file-input').click()">📷 사진/앨범</button>
+      <button class="btn btn-shoot" onclick="document.getElementById('file-input').click()">📷 사진</button>
       <button class="btn btn-warp" id="btn-scan" onclick="processScan()">완료</button>
     </div>
   </div>
@@ -60,10 +51,6 @@
     let cvReady = false, originalImg = null, points = [], activeIdx = -1, scaleX = 1, scaleY = 1;
     function onOpenCvReady() { cvReady = true; }
 
-    const editorCanvas = document.getElementById('editor-canvas'), ctx = editorCanvas.getContext('2d');
-    const loupe = document.getElementById('loupe-container'), loupeCanvas = document.getElementById('loupe-canvas');
-    const lCtx = loupeCanvas.getContext('2d');
-
     document.getElementById('file-input').onchange = (e) => {
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -71,12 +58,12 @@
         originalImg.onload = () => {
           const container = document.getElementById('main-container');
           const scale = Math.min(container.clientWidth / originalImg.width, container.clientHeight / originalImg.height);
+          const editorCanvas = document.getElementById('editor-canvas');
           editorCanvas.width = originalImg.width * scale;
           editorCanvas.height = originalImg.height * scale;
           scaleX = originalImg.width / editorCanvas.width;
           scaleY = originalImg.height / editorCanvas.height;
-          const w = editorCanvas.width, h = editorCanvas.height;
-          points = [{x: w*0.2, y: h*0.25}, {x: w*0.8, y: h*0.25}, {x: w*0.8, y: h*0.75}, {x: w*0.2, y: h*0.75}];
+          autoDetectCorners(); // 자동 인식 실행
           render();
         };
         originalImg.src = event.target.result;
@@ -84,9 +71,54 @@
       reader.readAsDataURL(e.target.files[0]);
     };
 
+    function autoDetectCorners() {
+      if(!cvReady) { setDefaultPoints(); return; }
+      let src = cv.imread(originalImg);
+      let gray = new cv.Mat();
+      cv.cvtColor(src, gray, cv.COLOR_RGBA2GRAY);
+      cv.GaussianBlur(gray, gray, new cv.Size(5, 5), 0);
+      let edged = new cv.Mat();
+      cv.Canny(gray, edged, 50, 150);
+      let contours = new cv.MatVector();
+      let hierarchy = new cv.Mat();
+      cv.findContours(edged, contours, hierarchy, cv.RETR_EXTERNAL, cv.CHAIN_APPROX_SIMPLE);
+
+      let maxArea = 0, maxContour = null;
+      for (let i = 0; i < contours.size(); ++i) {
+        let cnt = contours.get(i);
+        let area = cv.contourArea(cnt);
+        if (area > maxArea) { maxArea = area; maxContour = cnt; }
+      }
+
+      if(maxContour) {
+        let peri = cv.arcLength(maxContour, true);
+        let approx = new cv.Mat();
+        cv.approxPolyDP(maxContour, approx, 0.05 * peri, true);
+        if(approx.rows === 4) {
+          let pts = [];
+          for(let i=0; i<4; i++) pts.push({x: approx.data32S[i*2] / scaleX, y: approx.data32S[i*2+1] / scaleY});
+          points = orderPoints(pts);
+        } else { setDefaultPoints(); }
+        approx.delete();
+      } else { setDefaultPoints(); }
+      src.delete(); gray.delete(); edged.delete(); contours.delete(); hierarchy.delete();
+    }
+
+    function setDefaultPoints() {
+      const w = document.getElementById('editor-canvas').width;
+      const h = document.getElementById('editor-canvas').height;
+      points = [{x: w*0.2, y: h*0.25}, {x: w*0.8, y: h*0.25}, {x: w*0.8, y: h*0.75}, {x: w*0.2, y: h*0.75}];
+    }
+
+    function orderPoints(pts) {
+      pts.sort((a,b) => (a.y + a.x) - (b.y + b.x)); // Sum/Diff 간단 정렬
+      return [pts[0], pts[1], pts[3], pts[2]]; // TL, TR, BR, BL 순서 근사치
+    }
+
     function render() {
-      ctx.clearRect(0, 0, editorCanvas.width, editorCanvas.height);
-      ctx.drawImage(originalImg, 0, 0, editorCanvas.width, editorCanvas.height);
+      const canvas = document.getElementById('editor-canvas'), ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(originalImg, 0, 0, canvas.width, canvas.height);
       ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
       for (let i = 1; i < 4; i++) ctx.lineTo(points[i].x, points[i].y);
       ctx.closePath();
@@ -96,10 +128,11 @@
         ctx.fillStyle = (activeIdx === i) ? '#ffea00' : '#ff1744';
         ctx.fill();
       });
-      if(activeIdx !== -1) updateLoupe();
+      if(activeIdx !== -1) updateLoupe(); else document.getElementById('loupe-container').style.display='none';
     }
 
     function updateLoupe() {
+      const loupe = document.getElementById('loupe-container'), lCtx = document.getElementById('loupe-canvas').getContext('2d');
       loupe.style.display = 'block';
       const p = points[activeIdx];
       lCtx.clearRect(0,0,150,150);
@@ -107,14 +140,10 @@
       lCtx.strokeStyle = 'red'; lCtx.strokeRect(65, 65, 20, 20);
     }
 
-    function nudge(dx, dy) {
-      if(activeIdx === -1) return;
-      points[activeIdx].x += dx; points[activeIdx].y += dy;
-      render();
-    }
+    function nudge(dx, dy) { if(activeIdx !== -1) { points[activeIdx].x += dx; points[activeIdx].y += dy; render(); } }
 
     const handleInput = (e) => {
-      const rect = editorCanvas.getBoundingClientRect();
+      const rect = document.getElementById('editor-canvas').getBoundingClientRect();
       const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
       const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
       activeIdx = points.findIndex(p => Math.hypot(p.x - x, p.y - y) < 60);
@@ -124,16 +153,16 @@
     const handleDrag = (e) => {
       if(activeIdx === -1) return;
       e.preventDefault();
-      const rect = editorCanvas.getBoundingClientRect();
+      const rect = document.getElementById('editor-canvas').getBoundingClientRect();
       points[activeIdx].x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
       points[activeIdx].y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
       render();
     };
 
-    editorCanvas.addEventListener('mousedown', handleInput);
-    editorCanvas.addEventListener('touchstart', handleInput);
-    editorCanvas.addEventListener('mousemove', handleDrag);
-    editorCanvas.addEventListener('touchmove', handleDrag, {passive:false});
+    document.getElementById('editor-canvas').addEventListener('mousedown', handleInput);
+    document.getElementById('editor-canvas').addEventListener('touchstart', handleInput);
+    document.getElementById('editor-canvas').addEventListener('mousemove', handleDrag);
+    document.getElementById('editor-canvas').addEventListener('touchmove', handleDrag, {passive:false});
 
     function processScan() {
       if(!cvReady || !originalImg) return;
@@ -144,10 +173,8 @@
       const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, dstW, 0, dstW, dstH, 0, dstH]);
       const M = cv.getPerspectiveTransform(srcTri, dstTri);
       cv.warpPerspective(srcMat, dstMat, M, new cv.Size(dstW, dstH), cv.INTER_LINEAR);
-      
       const resC = document.getElementById('result-canvas');
       cv.imshow(resC, dstMat);
-      
       document.getElementById('result-modal').style.display = 'flex';
       srcMat.delete(); dstMat.delete(); srcTri.delete(); dstTri.delete(); M.delete();
     }
