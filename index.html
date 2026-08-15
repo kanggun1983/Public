@@ -6,7 +6,7 @@
   <title>신분증 스마트 자동 스캐너</title>
   <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();"></script>
   <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; touch-action: none; }
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #000; color: #fff; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
     
     header { height: 44px; background: #181818; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid #2c2c2c; z-index: 10; }
@@ -15,7 +15,7 @@
 
     #main-container { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #000; }
     
-    /* 1. 실시간 카메라 뷰 */
+    /* 실시간 카메라 뷰 */
     #camera-view { width: 100%; height: 100%; position: absolute; top: 0; left: 0; display: flex; align-items: center; justify-content: center; }
     #video { width: 100%; height: 100%; object-fit: cover; }
     
@@ -33,28 +33,29 @@
       width: 86vw;
       max-width: 360px;
       aspect-ratio: 1.586 / 1;
-      border: 3px solid #00e676;
+      border: 3.5px solid #00e676;
       border-radius: 12px;
       box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
       position: relative;
+      transition: border-color 0.2s, box-shadow 0.2s;
     }
-    #guide-box::after {
-      content: '신분증을 초록색 사각형에 맞춰주세요';
-      position: absolute;
-      bottom: -32px;
-      left: 50%;
-      transform: translateX(-50%);
+    #guide-box.detecting { border-color: #ffea00; }
+    #guide-box.captured { border-color: #ffffff; box-shadow: 0 0 0 9999px rgba(255, 255, 255, 0.8); }
+
+    #guide-msg {
+      margin-top: 25px;
       font-size: 13px;
       color: #00e676;
-      white-space: nowrap;
-      background: rgba(0,0,0,0.7);
-      padding: 3px 8px;
-      border-radius: 4px;
+      background: rgba(0,0,0,0.75);
+      padding: 5px 12px;
+      border-radius: 20px;
+      font-weight: 500;
+      text-align: center;
     }
 
-    /* 2. 수동 편집 캔버스 (앨범용) */
+    /* 수동 편집 캔버스 (앨범용) */
     #editor-view { width: 100%; height: 100%; display: none; align-items: center; justify-content: center; position: absolute; top:0; left:0; }
-    #editor-canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
+    #editor-canvas { max-width: 100%; max-height: 100%; object-fit: contain; touch-action: none; }
 
     /* 모서리 확대경 */
     #loupe-container { 
@@ -69,22 +70,31 @@
     /* 하단 조작 패널 */
     #control-panel { height: 110px; background: #181818; display: flex; align-items: center; justify-content: space-around; padding: 10px; border-top: 1px solid #2c2c2c; z-index: 10; }
     .dpad { display: none; grid-template-columns: 45px 45px 45px; grid-template-rows: 45px 45px; gap: 3px; }
-    .dpad button { background: #2e2e2e; color: white; border: 1px solid #444; border-radius: 8px; font-size: 16px; font-weight: bold; }
+    .dpad button { background: #2e2e2e; color: white; border: 1px solid #444; border-radius: 8px; font-size: 16px; font-weight: bold; touch-action: manipulation; }
     .dpad button:active { background: #00e676; color: #000; }
     
     .actions { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 340px; }
     .btn-row { display: flex; gap: 8px; width: 100%; }
-    .btn { height: 44px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-    .btn-camera { background: #00e676; color: black; font-size: 16px; font-weight: bold; }
+    .btn { 
+      height: 44px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; 
+      cursor: pointer; display: flex; align-items: center; justify-content: center; 
+      touch-action: manipulation; -webkit-tap-highlight-color: transparent;
+    }
+    .btn:active { opacity: 0.8; transform: scale(0.98); }
+    .btn-camera { background: #00e676; color: black; font-size: 15px; font-weight: bold; }
     .btn-album { background: #37474f; color: white; }
     .btn-warp { background: #00e676; color: black; font-size: 15px; font-weight: bold; }
     .btn-print { background: #9c27b0; color: white; }
     
     /* 결과 모달 */
-    #result-modal { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.96); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:200; }
+    #result-modal { 
+      position: fixed; top:0; left:0; width:100%; height:100%; 
+      background:rgba(0,0,0,0.96); display:none; flex-direction:column; 
+      align-items:center; justify-content:center; z-index:99999; 
+    }
     #result-canvas { max-width: 95vw; max-height: 65vh; object-fit: contain; border: 2px solid #fff; border-radius: 6px; }
 
-    /* A4 실제 규격(85.6mm x 53.98mm) 1:1 인쇄 */
+    /* A4 1:1 출력 전용 */
     #print-area { display: none; }
     @media print {
       @page { size: A4 portrait; margin: 0; }
@@ -111,19 +121,20 @@
 
   <header>
     <h1>신분증 자동 스캐너</h1>
-    <span id="mode-label">⚡ 실시간 자동 모드</span>
+    <span id="mode-label">⚡ 실시간 자동 감지 중</span>
   </header>
 
   <div id="main-container">
-    <!-- 1. 실시간 카메라 & 가이드 -->
+    <!-- 실시간 카메라 & 자동 가이드 -->
     <div id="camera-view">
       <video id="video" autoplay playsinline muted></video>
       <div id="guide-overlay">
         <div id="guide-box"></div>
+        <div id="guide-msg">신분증을 초록 사각형에 맞춰주세요</div>
       </div>
     </div>
 
-    <!-- 2. 앨범 사진 수동 편집기 -->
+    <!-- 앨범 사진 수동 편집기 -->
     <div id="editor-view">
       <canvas id="editor-canvas"></canvas>
       <div id="loupe-container">
@@ -133,9 +144,7 @@
     </div>
   </div>
 
-  <!-- 하단 컨트롤 패널 -->
   <div id="control-panel">
-    <!-- 수동 모드 시 나타나는 D-Pad -->
     <div class="dpad" id="dpad-box">
       <div></div><button onclick="nudge(0,-2)">▲</button><div></div>
       <button onclick="nudge(-2,0)">◀</button><button onclick="nudge(0,2)">▼</button><button onclick="nudge(2,0)">▶</button>
@@ -144,13 +153,11 @@
     <div class="actions">
       <input type="file" id="album-input" accept="image/*" style="display: none;">
       
-      <!-- 실시간 카메라 모드 버튼 -->
       <div class="btn-row" id="cam-actions">
         <button class="btn btn-album" style="flex: 1;" onclick="document.getElementById('album-input').click()">🖼️ 앨범 선택</button>
-        <button class="btn btn-camera" style="flex: 2;" onclick="captureFromGuide()">📷 즉시 자동 스캔</button>
+        <button class="btn btn-camera" style="flex: 1.5;" onclick="triggerCapture()">📸 수동 촬영</button>
       </div>
 
-      <!-- 수동 편집 모드 버튼 -->
       <div class="btn-row" id="edit-actions" style="display: none;">
         <button class="btn btn-album" style="flex: 1;" onclick="backToCamera()">📷 카메라로</button>
         <button class="btn btn-warp" style="flex: 1.5;" onclick="processManualScan()">완료</button>
@@ -158,13 +165,12 @@
     </div>
   </div>
 
-  <!-- 결과 화면 -->
   <div id="result-modal">
     <canvas id="result-canvas"></canvas>
-    <div style="display: flex; gap: 8px; margin-top: 18px; width: 92%; max-width: 400px;">
-      <button class="btn btn-album" style="flex: 1;" onclick="document.getElementById('result-modal').style.display='none'">다시 촬영</button>
+    <div style="display: flex; gap: 8px; margin-top: 18px; width: 92%; max-width: 400px; z-index: 100000;">
+      <button class="btn btn-album" style="flex: 1;" onclick="restartAutoScan()">다시 촬영</button>
       <button class="btn btn-print" style="flex: 1.2;" onclick="printA4()">🖨️ A4 인쇄</button>
-      <button class="btn btn-warp" style="flex: 1;" onclick="downloadResult()">저장(JPG)</button>
+      <button class="btn btn-warp" style="flex: 1.2;" onclick="downloadResult()">저장(JPG)</button>
     </div>
   </div>
 
@@ -173,11 +179,30 @@
   <script>
     let cvReady = false, stream = null;
     let originalImg = null, points = [], activeIdx = 0, scaleX = 1, scaleY = 1;
+    let autoScanInterval = null, stabilityCount = 0, isCaptured = false;
     const cornerNames = ["좌상단 ┌", "우상단 ┐", "우하단 ┘", "좌하단 └"];
 
-    function onOpenCvReady() { cvReady = true; }
+    function onOpenCvReady() { 
+      cvReady = true; 
+    }
 
-    // 1. 실시간 후면 카메라 시작
+    // 비프음 생성 (Web Audio API)
+    function playBeep() {
+      try {
+        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.type = "sine";
+        osc.frequency.value = 880;
+        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.15);
+        osc.start();
+        osc.stop(audioCtx.currentTime + 0.15);
+      } catch(e){}
+    }
+
     async function startCamera() {
       try {
         if (stream) stream.getTracks().forEach(t => t.stop());
@@ -185,28 +210,108 @@
           video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
           audio: false
         });
-        document.getElementById('video').srcObject = stream;
+        const video = document.getElementById('video');
+        video.srcObject = stream;
+        video.onloadedmetadata = () => {
+          video.play();
+          startAutoDetection();
+        };
       } catch (err) {
-        alert("카메라를 실행할 수 없습니다. 권한을 허용해주세요.");
+        alert("카메라 권한을 허용해주세요.");
       }
     }
     window.addEventListener('load', startCamera);
 
-    // 2. 가이드 틀 영역만 실물 신분증 300 DPI(1011x638)로 즉시 크롭
+    // 실시간 신분증 자동 정렬 & 자동 셔터 루프 (초당 8회 검사)
+    function startAutoDetection() {
+      if (autoScanInterval) clearInterval(autoScanInterval);
+      const tempCanvas = document.createElement('canvas');
+      const tCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
+      tempCanvas.width = 160;
+      tempCanvas.height = 100;
+
+      autoScanInterval = setInterval(() => {
+        if (isCaptured || document.getElementById('camera-view').style.display === 'none') return;
+        const video = document.getElementById('video');
+        if (!video.videoWidth || video.readyState < 2) return;
+
+        const vRect = video.getBoundingClientRect();
+        const gRect = document.getElementById('guide-box').getBoundingClientRect();
+        const scale = Math.max(video.videoWidth / vRect.width, video.videoHeight / vRect.height);
+        const offsetX = (vRect.width - (video.videoWidth / scale)) / 2;
+        const offsetY = (vRect.height - (video.videoHeight / scale)) / 2;
+
+        const cropX = (gRect.left - vRect.left - offsetX) * scale;
+        const cropY = (gRect.top - vRect.top - offsetY) * scale;
+        const cropW = gRect.width * scale;
+        const cropH = gRect.height * scale;
+
+        tCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, 160, 100);
+        const imgData = tCtx.getImageData(0, 0, 160, 100);
+        const data = imgData.data;
+
+        // 명암 분산도 및 카드 영역 검출
+        let brightnessSum = 0, count = data.length / 4;
+        for (let i = 0; i < data.length; i += 4) {
+          brightnessSum += (data[i] + data[i+1] + data[i+2]) / 3;
+        }
+        let mean = brightnessSum / count;
+        let variance = 0;
+        for (let i = 0; i < data.length; i += 4) {
+          let b = (data[i] + data[i+1] + data[i+2]) / 3;
+          variance += (b - mean) * (b - mean);
+        }
+        let stdDev = Math.sqrt(variance / count);
+
+        const gBox = document.getElementById('guide-box');
+        const gMsg = document.getElementById('guide-msg');
+
+        // 카드가 틀 안에 들어왔을 때 (표준 밝기 60~225 및 텍스트/사진 대비 stdDev > 22)
+        if (mean > 60 && mean < 225 && stdDev > 22) {
+          stabilityCount++;
+          gBox.classList.add('detecting');
+          gMsg.innerText = `신분증 감지됨! 그대로 유지하세요 (${stabilityCount}/3)`;
+          gMsg.style.color = '#ffea00';
+
+          // 0.8초 동안 흔들림 없이 유지되면 자동 촬영
+          if (stabilityCount >= 3) {
+            triggerCapture();
+          }
+        } else {
+          stabilityCount = 0;
+          gBox.classList.remove('detecting');
+          gMsg.innerText = '신분증을 초록 사각형에 맞춰주세요';
+          gMsg.style.color = '#00e676';
+        }
+      }, 250);
+    }
+
+    // 셔터 격발 (자동 또는 수동 버튼)
+    function triggerCapture() {
+      if (isCaptured) return;
+      isCaptured = true;
+
+      const gBox = document.getElementById('guide-box');
+      gBox.classList.add('captured');
+      playBeep();
+      if (navigator.vibrate) navigator.vibrate(80);
+
+      setTimeout(() => {
+        gBox.classList.remove('captured', 'detecting');
+        captureFromGuide();
+      }, 150);
+    }
+
     function captureFromGuide() {
       const video = document.getElementById('video');
       const guideBox = document.getElementById('guide-box');
-      if (!video.videoWidth) return alert("카메라 화면 로딩 중입니다.");
+      if (!video.videoWidth) return;
 
       const vRect = video.getBoundingClientRect();
       const gRect = guideBox.getBoundingClientRect();
-
-      // 화면에 표시된 비디오 실제 비율과 원본 해상도 매핑
       const scale = Math.max(video.videoWidth / vRect.width, video.videoHeight / vRect.height);
-      const displayedW = video.videoWidth / scale;
-      const displayedH = video.videoHeight / scale;
-      const offsetX = (vRect.width - displayedW) / 2;
-      const offsetY = (vRect.height - displayedH) / 2;
+      const offsetX = (vRect.width - (video.videoWidth / scale)) / 2;
+      const offsetY = (vRect.height - (video.videoHeight / scale)) / 2;
 
       const cropX = (gRect.left - vRect.left - offsetX) * scale;
       const cropY = (gRect.top - vRect.top - offsetY) * scale;
@@ -217,15 +322,21 @@
       rCanvas.width = 1011;
       rCanvas.height = 638;
       const ctx = rCanvas.getContext('2d');
-
       ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, 1011, 638);
       document.getElementById('result-modal').style.display = 'flex';
     }
 
-    // 3. 앨범 사진 불러오기 (수동 편집 모드 전환)
+    function restartAutoScan() {
+      document.getElementById('result-modal').style.display = 'none';
+      isCaptured = false;
+      stabilityCount = 0;
+    }
+
+    // 앨범 선택 및 수동 모드
     document.getElementById('album-input').onchange = (e) => {
       const file = e.target.files[0];
       if (!file) return;
+      isCaptured = true;
 
       const reader = new FileReader();
       reader.onload = (event) => {
@@ -277,11 +388,12 @@
       document.getElementById('edit-actions').style.display = 'none';
       document.getElementById('cam-actions').style.display = 'flex';
       document.getElementById('dpad-box').style.display = 'none';
-      document.getElementById('mode-label').innerText = "⚡ 실시간 자동 모드";
+      document.getElementById('mode-label').innerText = "⚡ 실시간 자동 감지 중";
+      isCaptured = false;
+      stabilityCount = 0;
       startCamera();
     }
 
-    // 수동 편집기 렌더링 & 확대경
     function render() {
       const canvas = document.getElementById('editor-canvas');
       if (!canvas || !originalImg) return;
@@ -394,11 +506,32 @@
       srcMat.delete(); dstMat.delete(); srcTri.delete(); dstTri.delete(); M.delete();
     }
 
-    function downloadResult() {
-      const link = document.createElement('a');
-      link.download = `ID_SCAN_300DPI_${Date.now()}.jpg`;
-      link.href = document.getElementById('result-canvas').toDataURL('image/jpeg', 0.95);
-      link.click();
+    async function downloadResult() {
+      const rCanvas = document.getElementById('result-canvas');
+      const filename = `신분증스캔_${Date.now()}.jpg`;
+
+      rCanvas.toBlob(async (blob) => {
+        if (!blob) return alert("이미지 생성에 실패했습니다.");
+        const file = new File([blob], filename, { type: 'image/jpeg' });
+
+        if (navigator.canShare && navigator.canShare({ files: [file] })) {
+          try {
+            await navigator.share({ files: [file], title: '신분증 스캔본' });
+            return;
+          } catch (err) {
+            if (err.name === 'AbortError') return;
+          }
+        }
+
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+      }, 'image/jpeg', 0.95);
     }
 
     function printA4() {
