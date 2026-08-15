@@ -3,63 +3,49 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>신분증 스마트 자동 스캐너</title>
+  <title>신분증 스마트 스캐너</title>
   <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #000; color: #fff; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
     
-    header { height: 44px; background: #181818; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border-bottom: 1px solid #2c2c2c; z-index: 10; }
+    header { height: 44px; background: #181818; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #2c2c2c; z-index: 20; }
     header h1 { font-size: 15px; font-weight: 600; }
-    #mode-label { font-size: 12px; color: #00e676; font-weight: bold; }
+    #toggle-auto { background: #333; color: #00e676; border: 1px solid #00e676; border-radius: 20px; font-size: 11px; font-weight: bold; padding: 4px 10px; cursor: pointer; }
+    #toggle-auto.off { color: #888; border-color: #555; background: #222; }
 
     #main-container { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #000; }
     
-    /* 실시간 카메라 뷰 */
+    /* 1. 실시간 카메라 화면 */
     #camera-view { width: 100%; height: 100%; position: absolute; top: 0; left: 0; display: flex; align-items: center; justify-content: center; }
     #video { width: 100%; height: 100%; object-fit: cover; }
     
-    /* 카메라 가이드 오버레이 */
     #guide-overlay {
-      position: absolute;
-      top: 0; left: 0; width: 100%; height: 100%;
-      pointer-events: none;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      position: absolute; top: 0; left: 0; width: 100%; height: 100%;
+      pointer-events: none; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
     }
     #guide-box {
-      width: 86vw;
-      max-width: 360px;
-      aspect-ratio: 1.586 / 1;
-      border: 3.5px solid #00e676;
-      border-radius: 12px;
+      width: 86vw; max-width: 360px; aspect-ratio: 1.586 / 1;
+      border: 3.5px solid #00e676; border-radius: 12px;
       box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
-      position: relative;
-      transition: border-color 0.2s, box-shadow 0.2s;
+      position: relative; transition: border-color 0.2s;
     }
     #guide-box.detecting { border-color: #ffea00; }
-    #guide-box.captured { border-color: #ffffff; box-shadow: 0 0 0 9999px rgba(255, 255, 255, 0.8); }
-
+    #guide-box.captured { border-color: #ffffff; box-shadow: 0 0 0 9999px rgba(255, 255, 255, 0.85); }
     #guide-msg {
-      margin-top: 25px;
-      font-size: 13px;
-      color: #00e676;
-      background: rgba(0,0,0,0.75);
-      padding: 5px 12px;
-      border-radius: 20px;
-      font-weight: 500;
-      text-align: center;
+      margin-top: 20px; font-size: 13px; color: #00e676;
+      background: rgba(0,0,0,0.8); padding: 5px 14px; border-radius: 20px;
+      font-weight: 500; text-align: center;
     }
 
-    /* 수동 편집 캔버스 (앨범용) */
-    #editor-view { width: 100%; height: 100%; display: none; align-items: center; justify-content: center; position: absolute; top:0; left:0; }
+    /* 2. 모서리 편집 화면 */
+    #editor-view { width: 100%; height: 100%; display: none; align-items: center; justify-content: center; position: absolute; top:0; left:0; background: #0d0d0d; }
     #editor-canvas { max-width: 100%; max-height: 100%; object-fit: contain; touch-action: none; }
 
-    /* 모서리 확대경 */
+    /* 확대경 */
     #loupe-container { 
-      position: absolute; bottom: 130px; right: 12px; width: 130px; height: 130px; 
+      position: absolute; bottom: 125px; right: 12px; width: 135px; height: 135px; 
       border: 2.5px solid #00e676; border-radius: 10px; background: #181818; 
       z-index: 50; display: none; pointer-events: none; overflow: hidden;
       box-shadow: 0 6px 20px rgba(0,0,0,0.9);
@@ -67,14 +53,14 @@
     #loupe-canvas { width: 100%; height: 100%; }
     #loupe-label { position: absolute; top: 4px; left: 6px; font-size: 11px; font-weight: bold; color: #00e676; background: rgba(0,0,0,0.8); padding: 2px 5px; border-radius: 4px; z-index: 10; }
 
-    /* 하단 조작 패널 */
-    #control-panel { height: 110px; background: #181818; display: flex; align-items: center; justify-content: space-around; padding: 10px; border-top: 1px solid #2c2c2c; z-index: 10; }
-    .dpad { display: none; grid-template-columns: 45px 45px 45px; grid-template-rows: 45px 45px; gap: 3px; }
-    .dpad button { background: #2e2e2e; color: white; border: 1px solid #444; border-radius: 8px; font-size: 16px; font-weight: bold; touch-action: manipulation; }
+    /* 하단 패널 */
+    #control-panel { height: 115px; background: #181818; display: flex; align-items: center; justify-content: space-around; padding: 10px; border-top: 1px solid #2c2c2c; z-index: 30; }
+    .dpad { display: none; grid-template-columns: 46px 46px 46px; grid-template-rows: 46px 46px; gap: 3px; }
+    .dpad button { background: #2e2e2e; color: white; border: 1px solid #444; border-radius: 8px; font-size: 17px; font-weight: bold; touch-action: manipulation; }
     .dpad button:active { background: #00e676; color: #000; }
     
     .actions { display: flex; flex-direction: column; gap: 6px; width: 100%; max-width: 340px; }
-    .btn-row { display: flex; gap: 8px; width: 100%; }
+    .btn-row { display: flex; gap: 6px; width: 100%; }
     .btn { 
       height: 44px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; 
       cursor: pointer; display: flex; align-items: center; justify-content: center; 
@@ -85,47 +71,32 @@
     .btn-album { background: #37474f; color: white; }
     .btn-warp { background: #00e676; color: black; font-size: 15px; font-weight: bold; }
     .btn-print { background: #9c27b0; color: white; }
-    
-    /* 결과 모달 */
-    #result-modal { 
-      position: fixed; top:0; left:0; width:100%; height:100%; 
-      background:rgba(0,0,0,0.96); display:none; flex-direction:column; 
-      align-items:center; justify-content:center; z-index:99999; 
-    }
-    #result-canvas { max-width: 95vw; max-height: 65vh; object-fit: contain; border: 2px solid #fff; border-radius: 6px; }
 
-    /* A4 1:1 출력 전용 */
+    /* 토스트 메시지 */
+    #toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(0,230,118,0.95); color: #000; padding: 8px 18px; border-radius: 20px; font-size: 13px; font-weight: bold; z-index: 9999; display: none; }
+
+    /* A4 실제 규격(85.6mm x 53.98mm) 1:1 출력 전용 */
     #print-area { display: none; }
     @media print {
       @page { size: A4 portrait; margin: 0; }
       body { background: #fff !important; }
       body > * { display: none !important; }
-      #print-area {
-        display: block !important;
-        position: absolute;
-        left: 20mm;
-        top: 20mm;
-        width: 85.6mm;
-        height: 53.98mm;
-      }
-      #print-area img {
-        width: 85.6mm;
-        height: 53.98mm;
-        display: block;
-        object-fit: fill;
-      }
+      #print-area { display: block !important; position: absolute; left: 20mm; top: 20mm; width: 85.6mm; height: 53.98mm; }
+      #print-area img { width: 85.6mm; height: 53.98mm; display: block; object-fit: fill; }
     }
   </style>
 </head>
 <body>
 
   <header>
-    <h1>신분증 자동 스캐너</h1>
-    <span id="mode-label">⚡ 실시간 자동 감지 중</span>
+    <h1>신분증 스마트 스캐너</h1>
+    <button id="toggle-auto" onclick="toggleAutoMode()">⚡ 자동촬영 ON</button>
   </header>
 
+  <div id="toast">저장 완료!</div>
+
   <div id="main-container">
-    <!-- 실시간 카메라 & 자동 가이드 -->
+    <!-- 실시간 카메라 뷰 -->
     <div id="camera-view">
       <video id="video" autoplay playsinline muted></video>
       <div id="guide-overlay">
@@ -134,17 +105,19 @@
       </div>
     </div>
 
-    <!-- 앨범 사진 수동 편집기 -->
+    <!-- 모서리 정밀 편집기 뷰 -->
     <div id="editor-view">
       <canvas id="editor-canvas"></canvas>
       <div id="loupe-container">
         <span id="loupe-label">모서리</span>
-        <canvas id="loupe-canvas" width="130" height="130"></canvas>
+        <canvas id="loupe-canvas" width="135" height="135"></canvas>
       </div>
     </div>
   </div>
 
+  <!-- 컨트롤 패널 -->
   <div id="control-panel">
+    <!-- 편집 모드 D-Pad -->
     <div class="dpad" id="dpad-box">
       <div></div><button onclick="nudge(0,-2)">▲</button><div></div>
       <button onclick="nudge(-2,0)">◀</button><button onclick="nudge(0,2)">▼</button><button onclick="nudge(2,0)">▶</button>
@@ -153,54 +126,51 @@
     <div class="actions">
       <input type="file" id="album-input" accept="image/*" style="display: none;">
       
+      <!-- 1. 카메라 모드 버튼 -->
       <div class="btn-row" id="cam-actions">
-        <button class="btn btn-album" style="flex: 1;" onclick="document.getElementById('album-input').click()">🖼️ 앨범 선택</button>
-        <button class="btn btn-camera" style="flex: 1.5;" onclick="triggerCapture()">📸 수동 촬영</button>
+        <button class="btn btn-album" style="flex: 1;" onclick="document.getElementById('album-input').click()">🖼️ 앨범</button>
+        <button class="btn btn-camera" style="flex: 2;" onclick="triggerCapture()">📸 사진 촬영</button>
       </div>
 
+      <!-- 2. 편집 모드 버튼 (촬영 즉시 전환됨) -->
       <div class="btn-row" id="edit-actions" style="display: none;">
-        <button class="btn btn-album" style="flex: 1;" onclick="backToCamera()">📷 카메라로</button>
-        <button class="btn btn-warp" style="flex: 1.5;" onclick="processManualScan()">완료</button>
+        <button class="btn btn-album" style="flex: 0.9;" onclick="backToCamera()">📷 재촬영</button>
+        <button class="btn btn-print" style="flex: 1;" onclick="printA4()">🖨️ A4 인쇄</button>
+        <button class="btn btn-warp" style="flex: 1.3;" onclick="saveAndFinish()">💾 저장(JPG)</button>
       </div>
-    </div>
-  </div>
-
-  <div id="result-modal">
-    <canvas id="result-canvas"></canvas>
-    <div style="display: flex; gap: 8px; margin-top: 18px; width: 92%; max-width: 400px; z-index: 100000;">
-      <button class="btn btn-album" style="flex: 1;" onclick="restartAutoScan()">다시 촬영</button>
-      <button class="btn btn-print" style="flex: 1.2;" onclick="printA4()">🖨️ A4 인쇄</button>
-      <button class="btn btn-warp" style="flex: 1.2;" onclick="downloadResult()">저장(JPG)</button>
     </div>
   </div>
 
   <div id="print-area"><img id="print-img" alt="신분증 인쇄"></div>
+  <canvas id="hidden-result" style="display: none;"></canvas>
 
   <script>
     let cvReady = false, stream = null;
     let originalImg = null, points = [], activeIdx = 0, scaleX = 1, scaleY = 1;
-    let autoScanInterval = null, stabilityCount = 0, isCaptured = false;
+    let autoScanInterval = null, autoModeEnabled = true, stabilityCount = 0, isCapturing = false;
     const cornerNames = ["좌상단 ┌", "우상단 ┐", "우하단 ┘", "좌하단 └"];
 
-    function onOpenCvReady() { 
-      cvReady = true; 
+    function onOpenCvReady() { cvReady = true; }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.innerText = msg;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 2000);
     }
 
-    // 비프음 생성 (Web Audio API)
-    function playBeep() {
-      try {
-        const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        const osc = audioCtx.createOscillator();
-        const gain = audioCtx.createGain();
-        osc.connect(gain);
-        gain.connect(audioCtx.destination);
-        osc.type = "sine";
-        osc.frequency.value = 880;
-        gain.gain.setValueAtTime(0.2, audioCtx.currentTime);
-        gain.gain.exponentialRampToValueAtTime(0.00001, audioCtx.currentTime + 0.15);
-        osc.start();
-        osc.stop(audioCtx.currentTime + 0.15);
-      } catch(e){}
+    function toggleAutoMode() {
+      autoModeEnabled = !autoModeEnabled;
+      const btn = document.getElementById('toggle-auto');
+      if (autoModeEnabled) {
+        btn.innerText = "⚡ 자동촬영 ON";
+        btn.classList.remove('off');
+      } else {
+        btn.innerText = "🖐️ 수동촬영 모드";
+        btn.classList.add('off');
+        document.getElementById('guide-msg').innerText = "신분증을 맞추고 [📸 사진 촬영]을 누르세요";
+      }
+      stabilityCount = 0;
     }
 
     async function startCamera() {
@@ -222,16 +192,16 @@
     }
     window.addEventListener('load', startCamera);
 
-    // 실시간 신분증 자동 정렬 & 자동 셔터 루프 (초당 8회 검사)
+    // 엄격한 신분증 감지 루프 (빈 바닥 오인식 차단)
     function startAutoDetection() {
       if (autoScanInterval) clearInterval(autoScanInterval);
-      const tempCanvas = document.createElement('canvas');
-      const tCtx = tempCanvas.getContext('2d', { willReadFrequently: true });
-      tempCanvas.width = 160;
-      tempCanvas.height = 100;
+      const testCanvas = document.createElement('canvas');
+      const tCtx = testCanvas.getContext('2d', { willReadFrequently: true });
+      testCanvas.width = 160;
+      testCanvas.height = 100;
 
       autoScanInterval = setInterval(() => {
-        if (isCaptured || document.getElementById('camera-view').style.display === 'none') return;
+        if (!autoModeEnabled || isCapturing || document.getElementById('camera-view').style.display === 'none') return;
         const video = document.getElementById('video');
         if (!video.videoWidth || video.readyState < 2) return;
 
@@ -248,65 +218,72 @@
 
         tCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, 160, 100);
         const imgData = tCtx.getImageData(0, 0, 160, 100);
-        const data = imgData.data;
+        const d = imgData.data;
 
-        // 명암 분산도 및 카드 영역 검출
-        let brightnessSum = 0, count = data.length / 4;
-        for (let i = 0; i < data.length; i += 4) {
-          brightnessSum += (data[i] + data[i+1] + data[i+2]) / 3;
+        // 정밀 엣지 & 텍스처 검사
+        let edgeScore = 0;
+        for (let y = 1; y < 99; y += 2) {
+          for (let x = 1; x < 159; x += 2) {
+            let idx = (y * 160 + x) * 4;
+            let val = (d[idx] + d[idx+1] + d[idx+2]) / 3;
+            let valRight = (d[idx+4] + d[idx+5] + d[idx+6]) / 3;
+            let valDown = (d[idx+640] + d[idx+641] + d[idx+642]) / 3;
+            edgeScore += Math.abs(val - valRight) + Math.abs(val - valDown);
+          }
         }
-        let mean = brightnessSum / count;
-        let variance = 0;
-        for (let i = 0; i < data.length; i += 4) {
-          let b = (data[i] + data[i+1] + data[i+2]) / 3;
-          variance += (b - mean) * (b - mean);
-        }
-        let stdDev = Math.sqrt(variance / count);
+        edgeScore = edgeScore / (80 * 50);
 
         const gBox = document.getElementById('guide-box');
         const gMsg = document.getElementById('guide-msg');
 
-        // 카드가 틀 안에 들어왔을 때 (표준 밝기 60~225 및 텍스트/사진 대비 stdDev > 22)
-        if (mean > 60 && mean < 225 && stdDev > 22) {
+        // 실제 텍스트와 사진이 있는 카드 감지 시에만 증가
+        if (edgeScore > 18.0) {
           stabilityCount++;
           gBox.classList.add('detecting');
-          gMsg.innerText = `신분증 감지됨! 그대로 유지하세요 (${stabilityCount}/3)`;
+          gMsg.innerText = `신분증 감지됨! 움직이지 마세요 (${stabilityCount}/4)`;
           gMsg.style.color = '#ffea00';
 
-          // 0.8초 동안 흔들림 없이 유지되면 자동 촬영
-          if (stabilityCount >= 3) {
+          if (stabilityCount >= 4) {
             triggerCapture();
           }
         } else {
           stabilityCount = 0;
           gBox.classList.remove('detecting');
-          gMsg.innerText = '신분증을 초록 사각형에 맞춰주세요';
+          gMsg.innerText = "신분증을 초록 사각형에 맞춰주세요";
           gMsg.style.color = '#00e676';
         }
       }, 250);
     }
 
-    // 셔터 격발 (자동 또는 수동 버튼)
+    // 셔터 촬영 후 즉시 편집 화면으로 전환
     function triggerCapture() {
-      if (isCaptured) return;
-      isCaptured = true;
+      if (isCapturing) return;
+      isCapturing = true;
 
       const gBox = document.getElementById('guide-box');
       gBox.classList.add('captured');
-      playBeep();
-      if (navigator.vibrate) navigator.vibrate(80);
+      if (navigator.vibrate) navigator.vibrate(60);
 
       setTimeout(() => {
         gBox.classList.remove('captured', 'detecting');
-        captureFromGuide();
-      }, 150);
+        captureToEditor();
+      }, 120);
     }
 
-    function captureFromGuide() {
+    function captureToEditor() {
       const video = document.getElementById('video');
       const guideBox = document.getElementById('guide-box');
       if (!video.videoWidth) return;
 
+      const memCanvas = document.createElement('canvas');
+      memCanvas.width = video.videoWidth;
+      memCanvas.height = video.videoHeight;
+      const memCtx = memCanvas.getContext('2d');
+      memCtx.drawImage(video, 0, 0);
+
+      originalImg = memCanvas;
+
+      // 가이드 박스의 실제 좌표 추출
       const vRect = video.getBoundingClientRect();
       const gRect = guideBox.getBoundingClientRect();
       const scale = Math.max(video.videoWidth / vRect.width, video.videoHeight / vRect.height);
@@ -318,32 +295,20 @@
       const cropW = gRect.width * scale;
       const cropH = gRect.height * scale;
 
-      const rCanvas = document.getElementById('result-canvas');
-      rCanvas.width = 1011;
-      rCanvas.height = 638;
-      const ctx = rCanvas.getContext('2d');
-      ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, 1011, 638);
-      document.getElementById('result-modal').style.display = 'flex';
+      openEditorView(cropX, cropY, cropW, cropH);
     }
 
-    function restartAutoScan() {
-      document.getElementById('result-modal').style.display = 'none';
-      isCaptured = false;
-      stabilityCount = 0;
-    }
-
-    // 앨범 선택 및 수동 모드
+    // 앨범 선택 시
     document.getElementById('album-input').onchange = (e) => {
       const file = e.target.files[0];
       if (!file) return;
-      isCaptured = true;
 
       const reader = new FileReader();
       reader.onload = (event) => {
         const tempImg = new Image();
         tempImg.onload = () => {
           originalImg = tempImg;
-          switchToEditMode();
+          openEditorView(0, 0, tempImg.width, tempImg.height, true);
         };
         tempImg.src = event.target.result;
       };
@@ -351,13 +316,12 @@
       e.target.value = '';
     };
 
-    function switchToEditMode() {
+    function openEditorView(gx, gy, gw, gh, isAlbum = false) {
       document.getElementById('camera-view').style.display = 'none';
       document.getElementById('editor-view').style.display = 'flex';
       document.getElementById('cam-actions').style.display = 'none';
       document.getElementById('edit-actions').style.display = 'flex';
       document.getElementById('dpad-box').style.display = 'grid';
-      document.getElementById('mode-label').innerText = "✏️ 앨범 정밀 편집";
 
       const container = document.getElementById('main-container');
       const scale = Math.min(container.clientWidth / originalImg.width, container.clientHeight / originalImg.height);
@@ -367,17 +331,23 @@
       scaleX = originalImg.width / canvas.width;
       scaleY = originalImg.height / canvas.height;
 
-      const w = canvas.width, h = canvas.height;
-      const cardW = Math.min(w * 0.75, h * 0.75 * 1.586);
-      const cardH = cardW / 1.586;
-      const startX = (w - cardW) / 2, startY = (h - cardH) / 2;
-
-      points = [
-        { x: startX, y: startY },
-        { x: startX + cardW, y: startY },
-        { x: startX + cardW, y: startY + cardH },
-        { x: startX, y: startY + cardH }
-      ];
+      if (!isAlbum) {
+        points = [
+          { x: gx / scaleX, y: gy / scaleY },
+          { x: (gx + gw) / scaleX, y: gy / scaleY },
+          { x: (gx + gw) / scaleX, y: (gy + gh) / scaleY },
+          { x: gx / scaleX, y: (gy + gh) / scaleY }
+        ];
+      } else {
+        const w = canvas.width, h = canvas.height;
+        const cardW = Math.min(w * 0.75, h * 0.75 * 1.586);
+        const cardH = cardW / 1.586;
+        const sx = (w - cardW)/2, sy = (h - cardH)/2;
+        points = [
+          { x: sx, y: sy }, { x: sx + cardW, y: sy },
+          { x: sx + cardW, y: sy + cardH }, { x: sx, y: sy + cardH }
+        ];
+      }
       activeIdx = 0;
       render();
     }
@@ -388,8 +358,7 @@
       document.getElementById('edit-actions').style.display = 'none';
       document.getElementById('cam-actions').style.display = 'flex';
       document.getElementById('dpad-box').style.display = 'none';
-      document.getElementById('mode-label').innerText = "⚡ 실시간 자동 감지 중";
-      isCaptured = false;
+      isCapturing = false;
       stabilityCount = 0;
       startCamera();
     }
@@ -432,15 +401,15 @@
       loupe.style.display = 'block';
 
       const p = points[activeIdx];
-      const cx = 65, cy = 65;
-      const viewSize = 50;
+      const cx = 67, cy = 67;
+      const viewSize = 52;
       const cropW = viewSize * scaleX, cropH = viewSize * scaleY;
       const cropX = (p.x * scaleX) - (cropW / 2), cropY = (p.y * scaleY) - (cropH / 2);
 
       lCtx.fillStyle = '#181818';
-      lCtx.fillRect(0, 0, 130, 130);
+      lCtx.fillRect(0, 0, 135, 135);
       try {
-        lCtx.drawImage(originalImg, cropX, cropY, cropW, cropH, 0, 0, 130, 130);
+        lCtx.drawImage(originalImg, cropX, cropY, cropW, cropH, 0, 0, 135, 135);
       } catch(e){}
 
       lCtx.save();
@@ -489,40 +458,47 @@
     canvas.addEventListener('mousemove', handleDrag);
     canvas.addEventListener('touchmove', handleDrag, {passive:false});
 
-    function processManualScan() {
-      if (!cvReady || !originalImg) return;
+    // 300 DPI 왜곡 보정 캔버스 생성
+    function getWarpedCanvas() {
       const dstW = 1011, dstH = 638;
+      const hCanvas = document.getElementById('hidden-result');
+      hCanvas.width = dstW;
+      hCanvas.height = dstH;
+
       const srcMat = cv.imread(originalImg);
       const dstMat = new cv.Mat();
       const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, points.flatMap(p => [p.x * scaleX, p.y * scaleY]));
       const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, dstW, 0, dstW, dstH, 0, dstH]);
       const M = cv.getPerspectiveTransform(srcTri, dstTri);
       cv.warpPerspective(srcMat, dstMat, M, new cv.Size(dstW, dstH), cv.INTER_LINEAR);
-      
-      const rCanvas = document.getElementById('result-canvas');
-      rCanvas.width = dstW; rCanvas.height = dstH;
-      cv.imshow(rCanvas, dstMat);
-      document.getElementById('result-modal').style.display = 'flex';
+      cv.imshow(hCanvas, dstMat);
+
       srcMat.delete(); dstMat.delete(); srcTri.delete(); dstTri.delete(); M.delete();
+      return hCanvas;
     }
 
-    async function downloadResult() {
-      const rCanvas = document.getElementById('result-canvas');
+    // [💾 저장(JPG)] 원클릭 실행 후 복귀
+    async function saveAndFinish() {
+      if (!cvReady || !originalImg) return;
+      const warpedCanvas = getWarpedCanvas();
       const filename = `신분증스캔_${Date.now()}.jpg`;
 
-      rCanvas.toBlob(async (blob) => {
-        if (!blob) return alert("이미지 생성에 실패했습니다.");
+      warpedCanvas.toBlob(async (blob) => {
+        if (!blob) return alert("이미지 생성 실패");
         const file = new File([blob], filename, { type: 'image/jpeg' });
 
         if (navigator.canShare && navigator.canShare({ files: [file] })) {
           try {
             await navigator.share({ files: [file], title: '신분증 스캔본' });
+            showToast("저장되었습니다!");
+            backToCamera();
             return;
           } catch (err) {
             if (err.name === 'AbortError') return;
           }
         }
 
+        // 다운로드 폴백
         const blobUrl = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = blobUrl;
@@ -531,11 +507,17 @@
         a.click();
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
+
+        showToast("저장되었습니다!");
+        backToCamera();
       }, 'image/jpeg', 0.95);
     }
 
+    // [🖨️ A4 인쇄]
     function printA4() {
-      const dataUrl = document.getElementById('result-canvas').toDataURL('image/jpeg', 1.0);
+      if (!cvReady || !originalImg) return;
+      const warpedCanvas = getWarpedCanvas();
+      const dataUrl = warpedCanvas.toDataURL('image/jpeg', 1.0);
       const pImg = document.getElementById('print-img');
       pImg.src = dataUrl;
       pImg.onload = () => window.print();
