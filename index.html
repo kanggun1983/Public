@@ -15,7 +15,6 @@
 
     #main-container { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #000; }
     
-    /* 1. 사진 불러오기 전 초기 화면 */
     #upload-view {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
       gap: 16px; width: 85%; max-width: 340px; padding: 36px 20px;
@@ -26,11 +25,9 @@
     .upload-title { font-size: 16px; font-weight: bold; color: #fff; }
     .upload-desc { font-size: 12px; color: #888; line-height: 1.5; }
 
-    /* 2. 사진 편집 화면 */
     #editor-view { width: 100%; height: 100%; display: none; align-items: center; justify-content: center; position: absolute; top: 0; left: 0; }
     #editor-canvas { max-width: 100%; max-height: 100%; object-fit: contain; touch-action: none; }
 
-    /* 4배율 초정밀 확대경 */
     #loupe-container { 
       position: absolute; width: 140px; height: 140px; 
       border: 2.5px solid #00e676; border-radius: 12px; background: #181818; 
@@ -41,7 +38,6 @@
     #loupe-canvas { width: 100%; height: 100%; }
     #loupe-label { position: absolute; top: 4px; left: 6px; font-size: 11px; font-weight: bold; color: #00e676; background: rgba(0,0,0,0.8); padding: 2px 6px; border-radius: 4px; z-index: 10; }
 
-    /* 하단 조작 패널 */
     #control-panel { background: #181818; display: none; flex-direction: column; padding: 6px 10px; border-top: 1px solid #2c2c2c; z-index: 30; gap: 6px; }
     
     #corner-selector { display: flex; align-items: center; justify-content: space-between; gap: 4px; width: 100%; max-width: 380px; margin: 0 auto; }
@@ -69,24 +65,23 @@
 
     #toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(0,230,118,0.95); color: #000; padding: 8px 18px; border-radius: 20px; font-size: 13px; font-weight: bold; z-index: 9999; display: none; }
 
-    /* A4 실제 규격 1:1 출력 전용 */
+    /* ★ 실제 물리 규격 85.6mm x 53.98mm 강제 인쇄 ★ */
     #print-area { display: none; }
     @media print {
-      @page { size: A4 portrait; margin: 0; }
-      html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; width: 210mm; height: 297mm; }
-      body > * { display: none !important; }
+      @page { size: auto; margin: 0mm; }
+      body * { visibility: hidden; }
+      #print-area, #print-area * { visibility: visible; }
       #print-area {
-        display: block !important;
-        position: absolute !important;
-        top: 25mm !important;
-        left: 62.2mm !important;
-        width: 85.6mm !important;
-        height: 53.98mm !important;
+        position: absolute; left: 0; top: 0; width: 100%;
+        display: flex; justify-content: center; padding-top: 10mm;
       }
-      #print-area img {
+      #print-img {
         width: 85.6mm !important;
         height: 53.98mm !important;
         display: block !important;
+        /* 프린터 여백 방지 */
+        border: none !important;
+        outline: none !important;
       }
     }
   </style>
@@ -140,7 +135,7 @@
       <div class="actions">
         <div class="btn-row">
           <button class="btn btn-album" style="flex: 0.9;" onclick="document.getElementById('album-input').click()">🖼️ 사진 변경</button>
-          <button class="btn btn-print" style="flex: 1;" onclick="printA4()">🖨️ A4 인쇄</button>
+          <button class="btn btn-print" style="flex: 1;" onclick="printA4()">🖨️ 실물크기 인쇄</button>
           <button class="btn btn-warp" style="flex: 1.4;" onclick="saveA4Document()">💾 저장(JPG)</button>
         </div>
       </div>
@@ -238,7 +233,6 @@
       requestSafeRender();
     }
 
-    // 렌더링 과부하 방지 (requestAnimationFrame)
     function requestSafeRender() {
       if (!renderRequested) {
         renderRequested = true;
@@ -288,15 +282,10 @@
       loupe.style.display = 'block';
 
       const p = points[activeIdx];
-
       if (p.y > canvas.height * 0.45 && p.x > canvas.width * 0.45) {
-        loupe.style.top = '12px';
-        loupe.style.bottom = 'auto';
-        loupe.style.right = '12px';
+        loupe.style.top = '12px'; loupe.style.bottom = 'auto'; loupe.style.right = '12px';
       } else {
-        loupe.style.bottom = '12px';
-        loupe.style.top = 'auto';
-        loupe.style.right = '12px';
+        loupe.style.bottom = '12px'; loupe.style.top = 'auto'; loupe.style.right = '12px';
       }
 
       const cx = 70, cy = 70;
@@ -311,8 +300,7 @@
       } catch(e){}
 
       lCtx.save();
-      lCtx.lineWidth = 3;
-      lCtx.strokeStyle = '#ff1744';
+      lCtx.lineWidth = 3; lCtx.strokeStyle = '#ff1744';
       lCtx.beginPath();
       const arm = 35;
       if (activeIdx === 0) { lCtx.moveTo(cx + arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy + arm); }
@@ -320,13 +308,10 @@
       else if (activeIdx === 2) { lCtx.moveTo(cx - arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy - arm); }
       else if (activeIdx === 3) { lCtx.moveTo(cx + arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy - arm); }
       lCtx.stroke();
-      
-      lCtx.fillStyle = '#ffea00';
-      lCtx.beginPath(); lCtx.arc(cx, cy, 2.5, 0, Math.PI * 2); lCtx.fill();
+      lCtx.fillStyle = '#ffea00'; lCtx.beginPath(); lCtx.arc(cx, cy, 2.5, 0, Math.PI * 2); lCtx.fill();
       lCtx.restore();
     }
 
-    // 0.5px 미세 이동 실행 함수
     function applyNudge(dirX, dirY) {
       if (activeIdx === -1) return;
       const canvas = document.getElementById('editor-canvas');
@@ -335,58 +320,31 @@
       requestSafeRender();
     }
 
-    // 포인터 이벤트(PointerEvent) 기반 안전 타이머 바인딩
     function bindDpadButton(btnId, dirX, dirY) {
       const btn = document.getElementById(btnId);
-
-      const start = (e) => {
-        e.preventDefault();
-        stopNudge(); // 기존에 남아있는 타이머 완전 종료
-        applyNudge(dirX, dirY);
-
-        nudgeTimer = setTimeout(() => {
-          nudgeInterval = setInterval(() => {
-            applyNudge(dirX, dirY);
-          }, 60);
-        }, 280);
-      };
-
+      const start = (e) => { e.preventDefault(); stopNudge(); applyNudge(dirX, dirY); nudgeTimer = setTimeout(() => { nudgeInterval = setInterval(() => { applyNudge(dirX, dirY); }, 60); }, 280); };
       btn.addEventListener('pointerdown', start);
       btn.addEventListener('pointerup', stopNudge);
       btn.addEventListener('pointercancel', stopNudge);
       btn.addEventListener('pointerleave', stopNudge);
     }
 
-    function stopNudge() {
-      if (nudgeTimer) { clearTimeout(nudgeTimer); nudgeTimer = null; }
-      if (nudgeInterval) { clearInterval(nudgeInterval); nudgeInterval = null; }
-    }
+    function stopNudge() { if (nudgeTimer) { clearTimeout(nudgeTimer); nudgeTimer = null; } if (nudgeInterval) { clearInterval(nudgeInterval); nudgeInterval = null; } }
 
-    bindDpadButton('btn-up', 0, -1);
-    bindDpadButton('btn-down', 0, 1);
-    bindDpadButton('btn-left', -1, 0);
-    bindDpadButton('btn-right', 1, 0);
+    bindDpadButton('btn-up', 0, -1); bindDpadButton('btn-down', 0, 1); bindDpadButton('btn-left', -1, 0); bindDpadButton('btn-right', 1, 0);
 
-    // 캔버스 터치/드래그 조작
     const canvas = document.getElementById('editor-canvas');
     function getCanvasPoint(e) {
       const rect = canvas.getBoundingClientRect();
       const clientX = e.touches && e.touches.length > 0 ? e.touches[0].clientX : e.clientX;
       const clientY = e.touches && e.touches.length > 0 ? e.touches[0].clientY : e.clientY;
-      return {
-        x: (clientX - rect.left) * (canvas.width / rect.width),
-        y: (clientY - rect.top) * (canvas.height / rect.height)
-      };
+      return { x: (clientX - rect.left) * (canvas.width / rect.width), y: (clientY - rect.top) * (canvas.height / rect.height) };
     }
 
     function handleTouch(e) {
       const pt = getCanvasPoint(e);
-      let minDist = Infinity;
-      let targetIdx = 0;
-      points.forEach((p, i) => {
-        const dist = Math.hypot(p.x - pt.x, p.y - pt.y);
-        if (dist < minDist) { minDist = dist; targetIdx = i; }
-      });
+      let minDist = Infinity; let targetIdx = 0;
+      points.forEach((p, i) => { const dist = Math.hypot(p.x - pt.x, p.y - pt.y); if (dist < minDist) { minDist = dist; targetIdx = i; } });
       selectCorner(targetIdx);
     }
 
@@ -404,111 +362,45 @@
     canvas.addEventListener('mousemove', handleDrag);
     canvas.addEventListener('touchmove', handleDrag, {passive: false});
 
-    // 600 DPI 고화질 왜곡 보정 및 자른 흔적 제거
     function getCleanCardCanvas() {
-      const dstW = 2022, dstH = 1276;
-      const rawCanvas = document.createElement('canvas');
-      rawCanvas.width = dstW; rawCanvas.height = dstH;
-
+      const dstW = 1011, dstH = 638;
+      const rawCanvas = document.createElement('canvas'); rawCanvas.width = dstW; rawCanvas.height = dstH;
       const srcMat = cv.imread(originalImg);
       const dstMat = new cv.Mat();
       const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, points.flatMap(p => [p.x * scaleX, p.y * scaleY]));
       const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, dstW, 0, dstW, dstH, 0, dstH]);
       const M = cv.getPerspectiveTransform(srcTri, dstTri);
-      
       cv.warpPerspective(srcMat, dstMat, M, new cv.Size(dstW, dstH), cv.INTER_CUBIC);
-
       const blurred = new cv.Mat();
       cv.GaussianBlur(dstMat, blurred, new cv.Size(0, 0), 2.0);
       cv.addWeighted(dstMat, 1.35, blurred, -0.35, 0, dstMat);
       blurred.delete();
-
       cv.imshow(rawCanvas, dstMat);
-
       srcMat.delete(); dstMat.delete(); srcTri.delete(); dstTri.delete(); M.delete();
-
-      const outCanvas = document.createElement('canvas');
-      outCanvas.width = dstW; outCanvas.height = dstH;
+      const outCanvas = document.createElement('canvas'); outCanvas.width = dstW; outCanvas.height = dstH;
       const oCtx = outCanvas.getContext('2d');
-
-      oCtx.fillStyle = '#ffffff';
-      oCtx.fillRect(0, 0, dstW, dstH);
-
-      const inset = 8;
-      const radius = 76;
-
-      oCtx.save();
-      oCtx.beginPath();
-      oCtx.roundRect(inset, inset, dstW - (inset * 2), dstH - (inset * 2), radius);
-      oCtx.clip();
-      oCtx.drawImage(rawCanvas, 0, 0);
-      oCtx.restore();
-
+      oCtx.fillStyle = '#ffffff'; oCtx.fillRect(0, 0, dstW, dstH);
+      oCtx.save(); oCtx.beginPath(); oCtx.roundRect(0, 0, dstW, dstH, 36); oCtx.clip();
+      oCtx.drawImage(rawCanvas, 0, 0); oCtx.restore();
       return outCanvas;
     }
 
-    // A4 스캔 문서 생성 (2480x3508 순백색)
-    function getA4DocumentCanvas() {
+    function printA4() {
+      if (!originalImg) return;
       const cardCanvas = getCleanCardCanvas();
-      const a4W = 2480, a4H = 3508;
-      const a4Canvas = document.createElement('canvas');
-      a4Canvas.width = a4W;
-      a4Canvas.height = a4H;
-      const a4Ctx = a4Canvas.getContext('2d');
-
-      a4Ctx.fillStyle = '#ffffff';
-      a4Ctx.fillRect(0, 0, a4W, a4H);
-
-      const targetW = 1011;
-      const targetH = 638;
-      const posX = Math.round((a4W - targetW) / 2);
-      const posY = 380;
-
-      a4Ctx.drawImage(cardCanvas, posX, posY, targetW, targetH);
-      return a4Canvas;
+      document.getElementById('print-img').src = cardCanvas.toDataURL('image/jpeg', 1.0);
+      window.print();
     }
 
     async function saveA4Document() {
-      if (!cvReady || !originalImg) return;
-      const a4Canvas = getA4DocumentCanvas();
-      const filename = `신분증_A4스캔본_${Date.now()}.jpg`;
-
-      a4Canvas.toBlob(async (blob) => {
-        if (!blob) return alert("이미지 생성 실패");
-        const file = new File([blob], filename, { type: 'image/jpeg' });
-
-        if (navigator.canShare && navigator.canShare({ files: [file] })) {
-          try {
-            await navigator.share({ files: [file], title: '신분증 A4 스캔본' });
-            showToast("A4 스캔본 저장 완료!");
-            return;
-          } catch (err) {
-            if (err.name === 'AbortError') return;
-          }
-        }
-
-        const blobUrl = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = blobUrl;
-        a.download = filename;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(blobUrl), 2000);
-
-        showToast("A4 스캔본 저장 완료!");
-      }, 'image/jpeg', 0.95);
-    }
-
-    function printA4() {
-      if (!cvReady || !originalImg) return;
+      if (!originalImg) return;
       const cardCanvas = getCleanCardCanvas();
-      const dataUrl = cardCanvas.toDataURL('image/jpeg', 1.0);
-      const pImg = document.getElementById('print-img');
-      pImg.src = dataUrl;
-      pImg.onload = () => {
-        window.print();
-      };
+      const a4 = document.createElement('canvas'); a4.width=2480; a4.height=3508;
+      const ctx = a4.getContext('2d');
+      ctx.fillStyle='#fff'; ctx.fillRect(0,0,2480,3508);
+      ctx.drawImage(cardCanvas, (2480-1011)/2, 380, 1011, 638);
+      const link = document.createElement('a'); link.download = "신분증_A4스캔본.jpg"; link.href = a4.toDataURL("image/jpeg", 1.0); link.click();
+      showToast("저장 완료!");
     }
   </script>
 </body>
