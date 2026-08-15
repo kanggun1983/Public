@@ -48,12 +48,35 @@
     .dpad button:active { background: #00e676; color: #000; }
     
     .actions { display: flex; flex-direction: column; gap: 6px; width: 120px; }
-    .btn { height: 45px; border-radius: 8px; border: none; font-size: 15px; font-weight: 600; cursor: pointer; }
+    .btn { height: 45px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; }
     .btn-shoot { background: #2979ff; color: white; }
     .btn-warp { background: #00e676; color: black; }
+    .btn-print { background: #9c27b0; color: white; }
     
     #result-modal { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.95); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:200; }
-    #result-canvas { max-width: 95vw; max-height: 70vh; object-fit: contain; border: 2px solid #fff; border-radius: 6px; }
+    #result-canvas { max-width: 95vw; max-height: 65vh; object-fit: contain; border: 2px solid #fff; border-radius: 6px; }
+
+    /* A4 실제 크기(85.6mm x 53.98mm) 인쇄 전용 스타일 */
+    #print-area { display: none; }
+    @media print {
+      @page { size: A4 portrait; margin: 0; }
+      body { background: #fff !important; }
+      body > * { display: none !important; }
+      #print-area {
+        display: block !important;
+        position: absolute;
+        left: 20mm;
+        top: 20mm;
+        width: 85.6mm;
+        height: 53.98mm;
+      }
+      #print-area img {
+        width: 85.6mm;
+        height: 53.98mm;
+        display: block;
+        object-fit: fill;
+      }
+    }
   </style>
 </head>
 <body>
@@ -80,11 +103,15 @@
 
   <div id="result-modal">
     <canvas id="result-canvas"></canvas>
-    <div style="display: flex; gap: 10px; margin-top: 20px;">
-      <button class="btn btn-shoot" style="width: 130px;" onclick="document.getElementById('result-modal').style.display='none'">다시 수정</button>
-      <button class="btn btn-warp" style="width: 130px;" onclick="downloadResult()">저장(JPG)</button>
+    <div style="display: flex; gap: 8px; margin-top: 18px; width: 92%; max-width: 400px;">
+      <button class="btn btn-shoot" style="flex: 1;" onclick="document.getElementById('result-modal').style.display='none'">다시 수정</button>
+      <button class="btn btn-print" style="flex: 1.2;" onclick="printA4()">🖨️ A4 인쇄</button>
+      <button class="btn btn-warp" style="flex: 1;" onclick="downloadResult()">저장(JPG)</button>
     </div>
   </div>
+
+  <!-- A4 인쇄용 컨테이너 -->
+  <div id="print-area"><img id="print-img" alt="신분증 인쇄"></div>
 
   <script>
     let cvReady = false, originalImg = null, points = [], activeIdx = -1, scaleX = 1, scaleY = 1;
@@ -114,7 +141,7 @@
       reader.readAsDataURL(file);
     };
 
-    // 정밀 외곽선 자동 감지 알고리즘
+    // 다단계 외곽선 자동 감지 알고리즘
     function autoDetectSmart() {
       if (!cvReady) { setDefaultPoints(); render(); return; }
 
@@ -250,7 +277,7 @@
       else document.getElementById('loupe-container').style.display = 'none';
     }
 
-    // 확대경 ㄱ/ㄴ 가이드 그리기
+    // 확대경 ㄱ/ㄴ 가이드
     function updateLoupe() {
       const loupe = document.getElementById('loupe-container');
       const lCanvas = document.getElementById('loupe-canvas');
@@ -322,7 +349,7 @@
 
     function processScan() {
       if (!cvReady || !originalImg) return;
-      const dstW = 1011, dstH = 638;
+      const dstW = 1011, dstH = 638; // 300 DPI 규격 (85.6mm : 53.98mm)
       const srcMat = cv.imread(originalImg);
       const dstMat = new cv.Mat();
       const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, points.flatMap(p => [p.x * scaleX, p.y * scaleY]));
@@ -344,6 +371,16 @@
       link.download = `ID_SCAN_300DPI_${Date.now()}.jpg`;
       link.href = document.getElementById('result-canvas').toDataURL('image/jpeg', 0.95);
       link.click();
+    }
+
+    // 🖨️ A4 용지 상단 1:1 실물 크기 즉시 인쇄/PDF 저장
+    function printA4() {
+      const dataUrl = document.getElementById('result-canvas').toDataURL('image/jpeg', 1.0);
+      const pImg = document.getElementById('print-img');
+      pImg.src = dataUrl;
+      pImg.onload = () => {
+        window.print();
+      };
     }
   </script>
 </body>
