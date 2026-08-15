@@ -3,47 +3,44 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>신분증 고해상도 스캐너</title>
+  <title>신분증 정밀 스캐너</title>
   <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();"></script>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
-    /* 100dvh로 수정하여 모바일 주소창 이슈 해결 */
     body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #121212; color: #fff; display: flex; flex-direction: column; height: 100dvh; overflow: hidden; }
     
     header { height: 50px; background: #1e1e1e; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #333; }
     header h1 { font-size: 16px; font-weight: 600; }
     #status { font-size: 12px; color: #ff9800; }
     
+    /* 메인 캔버스 */
     #main-container { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #000; }
     #editor-canvas { max-width: 100%; max-height: 100%; touch-action: none; }
     
-    #loupe {
-      position: absolute; width: 120px; height: 120px; border: 3px solid #00e676;
-      border-radius: 50%; pointer-events: none; display: none; overflow: hidden;
-      box-shadow: 0 4px 15px rgba(0,0,0,0.8); background: #000; z-index: 100;
-    }
+    /* D-PAD 컨트롤러 */
+    #control-panel { height: 120px; background: #1e1e1e; display: flex; align-items: center; justify-content: space-around; padding: 10px; border-top: 1px solid #333; }
+    .dpad { display: grid; grid-template-columns: 50px 50px 50px; grid-template-rows: 50px 50px; gap: 5px; }
+    .dpad button { background: #444; border: none; color: white; border-radius: 8px; font-size: 18px; }
+    .dpad button:active { background: #00e676; color: #000; }
+    
+    .actions { display: flex; flex-direction: column; gap: 5px; flex: 1; }
+    .btn { height: 45px; border-radius: 8px; border: none; font-size: 14px; font-weight: 600; cursor: pointer; }
+    .btn-shoot { background: #2979ff; color: white; }
+    .btn-warp { background: #00e676; color: black; }
+    .btn-disabled { opacity: 0.3; pointer-events: none; }
+
+    #loupe { position: absolute; width: 120px; height: 120px; border: 3px solid #00e676; border-radius: 50%; pointer-events: none; display: none; overflow: hidden; box-shadow: 0 4px 15px rgba(0,0,0,0.8); z-index: 100; }
     #loupe-canvas { width: 100%; height: 100%; }
-    #loupe::after {
-      content: ''; position: absolute; top: 50%; left: 50%;
-      width: 16px; height: 16px; transform: translate(-50%, -50%);
-      border: 1.5px solid #00e676; border-radius: 50%;
-    }
-
-    footer { height: 80px; background: #1e1e1e; display: flex; align-items: center; justify-content: space-around; padding: 0 12px; gap: 10px; }
-    .btn { flex: 1; height: 50px; border-radius: 8px; border: none; font-size: 16px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; }
-    .btn-camera { background: #2979ff; color: #fff; }
-    .btn-warp { background: #00e676; color: #000; }
-    .btn-disabled { opacity: 0.4; pointer-events: none; }
-
-    #result-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
-    #result-canvas { max-width: 95%; max-height: 70%; border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
-    .modal-actions { margin-top: 20px; display: flex; gap: 12px; width: 100%; max-width: 320px; }
+    
+    #result-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.95); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 200; }
+    #result-canvas { max-width: 95%; max-height: 70%; border-radius: 8px; }
+    .modal-actions { margin-top: 20px; display: flex; gap: 12px; }
   </style>
 </head>
 <body>
 
   <header>
-    <h1>고해상도 스캐너</h1>
+    <h1>정밀 스캐너</h1>
     <span id="status">로딩 중...</span>
   </header>
 
@@ -52,57 +49,43 @@
     <div id="loupe"><canvas id="loupe-canvas" width="120" height="120"></canvas></div>
   </div>
 
-  <footer>
-    <input type="file" id="file-input" accept="image/*" capture="environment" style="display: none;">
-    <button class="btn btn-camera" id="btn-shoot">📷 사진 촬영</button>
-    <button class="btn btn-warp btn-disabled" id="btn-scan">이대로 펴기</button>
-  </footer>
+  <!-- 컨트롤 패널 -->
+  <div id="control-panel">
+    <div class="dpad">
+      <div></div><button onclick="nudge(0, -2)">▲</button><div></div>
+      <button onclick="nudge(-2, 0)">◀</button><button onclick="nudge(0, 2)">▼</button><button onclick="nudge(2, 0)">▶</button>
+    </div>
+    <div class="actions">
+      <input type="file" id="file-input" accept="image/*" style="display: none;">
+      <button class="btn btn-shoot" onclick="document.getElementById('file-input').click()">📷 사진/갤러리</button>
+      <button class="btn btn-warp btn-disabled" id="btn-scan">이대로 펴기</button>
+    </div>
+  </div>
 
   <div id="result-modal">
     <canvas id="result-canvas"></canvas>
     <div class="modal-actions">
-      <button class="btn btn-camera" id="btn-re-edit">다시 수정</button>
-      <button class="btn btn-warp" id="btn-download">저장하기</button>
+      <button class="btn btn-shoot" onclick="resultModal.style.display='none'">수정</button>
+      <button class="btn btn-warp" id="btn-download">저장(JPG)</button>
     </div>
   </div>
 
   <script>
-    let cvReady = false;
-    function onOpenCvReady() {
-      cvReady = true;
-      document.getElementById('status').innerText = "준비 완료";
-      document.getElementById('status').style.color = "#00e676";
-    }
+    let cvReady = false, originalImg = null, points = [], activeIdx = -1;
+    function onOpenCvReady() { cvReady = true; document.getElementById('status').innerText = "준비 완료"; document.getElementById('status').style.color = "#00e676"; }
 
-    const fileInput = document.getElementById('file-input');
-    const editorCanvas = document.getElementById('editor-canvas');
-    const ctx = editorCanvas.getContext('2d');
-    const loupe = document.getElementById('loupe');
-    const loupeCanvas = document.getElementById('loupe-canvas');
-    const loupeCtx = loupeCanvas.getContext('2d');
+    const editorCanvas = document.getElementById('editor-canvas'), ctx = editorCanvas.getContext('2d');
+    const resultModal = document.getElementById('result-modal'), resultCanvas = document.getElementById('result-canvas');
     const btnScan = document.getElementById('btn-scan');
-    const resultModal = document.getElementById('result-modal');
-    const resultCanvas = document.getElementById('result-canvas');
 
-    let originalImg = null;
-    let points = [];
-    let activePointIndex = -1;
-    const HANDLE_RADIUS = 20;
-
-    document.getElementById('btn-shoot').onclick = () => fileInput.click();
-    fileInput.onchange = (e) => {
-      const file = e.target.files[0];
-      if (!file) return;
+    document.getElementById('file-input').onchange = (e) => {
       const reader = new FileReader();
       reader.onload = (event) => {
         originalImg = new Image();
-        originalImg.onload = () => {
-          setupCanvas();
-          btnScan.classList.remove('btn-disabled');
-        };
+        originalImg.onload = () => { setupCanvas(); btnScan.classList.remove('btn-disabled'); };
         originalImg.src = event.target.result;
       };
-      reader.readAsDataURL(file);
+      reader.readAsDataURL(e.target.files[0]);
     };
 
     function setupCanvas() {
@@ -123,59 +106,35 @@
       ctx.closePath();
       ctx.fillStyle = 'rgba(0, 230, 118, 0.2)'; ctx.fill();
       ctx.strokeStyle = '#00e676'; ctx.lineWidth = 3; ctx.stroke();
-
-      points.forEach((p, idx) => {
-        ctx.beginPath(); ctx.arc(p.x, p.y, HANDLE_RADIUS, 0, Math.PI * 2);
-        ctx.fillStyle = (activePointIndex === idx) ? '#ffea00' : '#ff1744';
+      points.forEach((p, i) => {
+        ctx.beginPath(); ctx.arc(p.x, p.y, 20, 0, Math.PI * 2);
+        ctx.fillStyle = (activeIdx === i) ? '#ffea00' : '#ff1744';
         ctx.fill();
       });
     }
 
-    function updateLoupe(point, touch) {
-      loupe.style.display = 'block';
-      loupe.style.left = `${touch.x - 60}px`; loupe.style.top = `${touch.y - 180}px`;
-      loupeCtx.clearRect(0, 0, 120, 120);
-      const zoom = 2;
-      loupeCtx.drawImage(editorCanvas, point.x - 30, point.y - 30, 60, 60, 0, 0, 120, 120);
+    function nudge(dx, dy) {
+      if (activeIdx === -1) return;
+      points[activeIdx].x = Math.max(0, Math.min(editorCanvas.width, points[activeIdx].x + dx));
+      points[activeIdx].y = Math.max(0, Math.min(editorCanvas.height, points[activeIdx].y + dy));
+      render();
     }
 
-    const getCoords = (e) => {
+    // 터치/클릭 선택 로직
+    const handleAction = (e) => {
       const rect = editorCanvas.getBoundingClientRect();
       const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
       const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
-      return { x, y, sx: e.touches ? e.touches[0].clientX : e.clientX, sy: e.touches ? e.touches[0].clientY : e.clientY };
+      activeIdx = points.findIndex(p => Math.hypot(p.x - x, p.y - y) < 40);
+      render();
     };
 
-    function onStart(e) {
-      if (!originalImg) return;
-      const c = getCoords(e);
-      activePointIndex = points.findIndex(p => Math.hypot(p.x - c.x, p.y - c.y) < HANDLE_RADIUS * 2);
-      if (activePointIndex !== -1) updateLoupe(points[activePointIndex], { x: c.sx, y: c.sy });
-    }
-
-    function onMove(e) {
-      if (activePointIndex === -1) return;
-      e.preventDefault();
-      const c = getCoords(e);
-      points[activePointIndex].x = Math.max(0, Math.min(editorCanvas.width, c.x));
-      points[activePointIndex].y = Math.max(0, Math.min(editorCanvas.height, c.y));
-      render();
-      updateLoupe(points[activePointIndex], { x: c.sx, y: c.sy });
-    }
-
-    function onEnd() { activePointIndex = -1; loupe.style.display = 'none'; render(); }
-
-    editorCanvas.addEventListener('touchstart', onStart, { passive: false });
-    editorCanvas.addEventListener('touchmove', onMove, { passive: false });
-    editorCanvas.addEventListener('touchend', onEnd);
-    editorCanvas.addEventListener('mousedown', onStart);
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onEnd);
+    editorCanvas.addEventListener('mousedown', handleAction);
+    editorCanvas.addEventListener('touchstart', handleAction);
 
     btnScan.onclick = () => {
       if (!cvReady) return;
-      // 300 DPI 기준 실물 크기 픽셀 (1011x638)
-      const dstW = 1011, dstH = 638;
+      const dstW = 1011, dstH = 638; // 300 DPI 기준 실물 크기
       const sx = originalImg.width / editorCanvas.width, sy = originalImg.height / editorCanvas.height;
       const srcMat = cv.imread(originalImg);
       const dstMat = new cv.Mat();
@@ -189,10 +148,9 @@
       resultModal.style.display = 'flex';
     };
 
-    document.getElementById('btn-re-edit').onclick = () => resultModal.style.display = 'none';
     document.getElementById('btn-download').onclick = () => {
       const link = document.createElement('a');
-      link.download = `ID_SCAN_300DPI_${Date.now()}.jpg`;
+      link.download = `ID_SCAN_${Date.now()}.jpg`;
       link.href = resultCanvas.toDataURL('image/jpeg', 0.95);
       link.click();
     };
