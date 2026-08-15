@@ -10,17 +10,17 @@
     body { font-family: sans-serif; background: #000; color: #fff; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
     header { height: 45px; background: #111; display: flex; align-items: center; justify-content: center; font-weight: bold; border-bottom: 1px solid #333; flex-shrink: 0; }
     
-    #main-container { flex: 1; position: relative; width: 100%; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-    #upload-view { width: 80%; height: 200px; border: 2px dashed #666; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; cursor: pointer; background: #1a1a1a; border-radius: 20px; }
+    #main-container { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; }
+    #upload-box { width: 80%; height: 200px; border: 2px dashed #666; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 15px; cursor: pointer; background: #1a1a1a; border-radius: 20px; }
     
     #editor-view { width: 100%; height: 100%; display: none; align-items: center; justify-content: center; position: absolute; }
     #editor-canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
-
-    /* 돋보기 (ID 수정 완료) */
-    #loupe-container { position: absolute; top: 10px; right: 10px; width: 140px; height: 140px; border: 3px solid #00e676; border-radius: 10px; z-index: 50; display: none; overflow: hidden; background: #000; box-shadow: 0 0 10px #000; }
+    
+    /* 돋보기 (상단 우측 고정) */
+    #loupe-container { position: absolute; top: 10px; right: 10px; width: 130px; height: 130px; border: 3px solid #00e676; border-radius: 10px; z-index: 50; display: none; overflow: hidden; box-shadow: 0 0 10px #000; background: #000; }
     #loupe-canvas { width: 100%; height: 100%; }
 
-    /* 하단 조작 패널 */
+    /* 조작 패널 (하단 고정) */
     #control-panel { height: 280px; background: #181818; padding: 10px; border-top: 2px solid #333; display: none; flex-direction: column; gap: 8px; flex-shrink: 0; }
     .row { display: flex; gap: 5px; justify-content: center; }
     .corner-btn { padding: 8px 12px; background: #333; border: 1px solid #555; color: #fff; border-radius: 5px; font-size: 13px; }
@@ -34,13 +34,12 @@
     .actions { display: flex; flex-direction: column; gap: 8px; flex: 1; }
     .btn { height: 45px; border-radius: 8px; border: none; font-weight: bold; cursor: pointer; color: #fff; }
 
-    /* ★ 인쇄시 물리 규격 강제 (85.6mm x 53.98mm) ★ */
-    #print-wrapper { display: none; }
+    /* 인쇄 강제 규격 */
     @media print {
       body * { visibility: hidden; }
-      #print-wrapper, #print-wrapper * { visibility: visible; }
-      #print-wrapper { position: absolute; left: 0; top: 0; width: 100%; display: flex; justify-content: center; padding-top: 10mm; }
-      #print-target { width: 85.6mm !important; height: 53.98mm !important; display: block !important; border: none !important; }
+      #print-area, #print-area * { visibility: visible; }
+      #print-area { position: absolute; left: 0; top: 0; width: 100%; display: flex; justify-content: center; }
+      #print-img { width: 85.6mm !important; height: 53.98mm !important; display: block !important; }
     }
   </style>
 </head>
@@ -53,7 +52,7 @@
     <div id="upload-box" onclick="document.getElementById('album-input').click()">🖼️ 갤러리에서 사진 선택</div>
     <div id="editor-view">
         <canvas id="editor-canvas"></canvas>
-        <div id="loupe-container"><canvas id="loupe-canvas" width="140" height="140"></canvas></div>
+        <div id="loupe-container"><canvas id="loupe-canvas" width="130" height="130"></canvas></div>
     </div>
 </div>
 
@@ -63,7 +62,7 @@
         <button class="corner-btn" onclick="selectCorner(1)">┐ 우상</button>
         <button class="corner-btn" onclick="selectCorner(2)">┘ 우하</button>
         <button class="corner-btn" onclick="selectCorner(3)">└ 좌하</button>
-        <button id="step-btn" onclick="toggleStep()" style="width:50px; background:#ff9800; border-radius:5px; border:none; font-weight:bold;">0.5px</button>
+        <button id="step-btn" onclick="toggleStep()" style="width:50px; background:#ff9800; border:none; border-radius:5px;">0.5px</button>
     </div>
     <div class="bottom-layout">
         <div class="dpad">
@@ -79,7 +78,7 @@
     </div>
 </div>
 
-<div id="print-wrapper"></div>
+<div id="print-area" style="display:none;"><img id="print-img"></div>
 
 <script>
     let cvReady = false, originalImg = null, points = [], activeIdx = 0, stepSize = 0.5, nudgeInterval = null;
@@ -115,12 +114,12 @@
         const ctx = document.getElementById('editor-canvas').getContext('2d');
         ctx.clearRect(0, 0, ctx.canvas.width, ctx.canvas.height);
         ctx.drawImage(originalImg, 0, 0, ctx.canvas.width, ctx.canvas.height);
-        ctx.strokeStyle = '#00e676'; ctx.lineWidth = 3;
+        ctx.strokeStyle = '#00e676'; ctx.lineWidth = 4;
         ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
         points.forEach(p => ctx.lineTo(p.x, p.y)); ctx.closePath(); ctx.stroke();
         points.forEach((p, i) => {
             ctx.fillStyle = (i === activeIdx) ? '#ffea00' : '#ff1744';
-            ctx.beginPath(); ctx.arc(p.x, p.y, 15, 0, Math.PI*2); ctx.fill();
+            ctx.beginPath(); ctx.arc(p.x, p.y, 18, 0, Math.PI*2); ctx.fill();
         });
         updateLoupe();
     }
@@ -141,33 +140,45 @@
     }
 
     const canvas = document.getElementById('editor-canvas');
-    canvas.addEventListener('pointermove', (e) => { if(e.buttons === 1) { const r=canvas.getBoundingClientRect(); points[activeIdx] = {x:(e.clientX-r.left)*(canvas.width/r.width), y:(e.clientY-r.top)*(canvas.height/r.height)}; render(); } });
+    canvas.addEventListener('pointermove', (e) => { if(e.buttons === 1) { const r=canvas.getBoundingClientRect(); points[activeIdx]={x:(e.clientX-r.left)*(canvas.width/r.width), y:(e.clientY-r.top)*(canvas.height/r.height)}; render(); } });
     canvas.addEventListener('pointerdown', (e) => { const r=canvas.getBoundingClientRect(); const x=(e.clientX-r.left)*(canvas.width/r.width), y=(e.clientY-r.top)*(canvas.height/r.height); points.forEach((p,i)=>{if(Math.hypot(p.x-x, p.y-y)<50) selectCorner(i);}); });
 
     function getCleanCard() {
+        if (!cvReady) return null;
         const dstW = 1011, dstH = 638;
         const canvas = document.createElement('canvas'); canvas.width = dstW; canvas.height = dstH;
-        const ctx = canvas.getContext('2d');
-        ctx.drawImage(originalImg, 0, 0, dstW, dstH);
-        const out = document.createElement('canvas'); out.width = dstW; out.height = dstH;
-        const oCtx = out.getContext('2d');
-        oCtx.fillStyle = '#fff'; oCtx.fillRect(0,0,dstW,dstH);
-        oCtx.beginPath(); oCtx.roundRect(0,0,dstW,dstH, 36); oCtx.clip();
-        oCtx.drawImage(canvas, 0, 0);
-        return out;
+        
+        // OpenCV Warp Perspective
+        const srcMat = cv.imread(originalImg);
+        const dstMat = new cv.Mat();
+        const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, points.flatMap(p => [p.x * (originalImg.width/document.getElementById('editor-canvas').width), p.y * (originalImg.height/document.getElementById('editor-canvas').height)]));
+        const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0,0, dstW,0, dstW,dstH, 0,dstH]);
+        const M = cv.getPerspectiveTransform(srcTri, dstTri);
+        cv.warpPerspective(srcMat, dstMat, M, new cv.Size(dstW, dstH), cv.INTER_CUBIC);
+        cv.imshow(canvas, dstMat);
+        srcMat.delete(); dstMat.delete(); srcTri.delete(); dstTri.delete(); M.delete();
+        
+        return canvas;
     }
 
     function printCard() {
-        document.getElementById('print-wrapper').innerHTML = `<img id="print-target" src="${getCleanCard().toDataURL('image/jpeg', 1.0)}">`;
+        const card = getCleanCard();
+        if(!card) return alert("로딩 중입니다...");
+        document.getElementById('print-img').src = card.toDataURL('image/jpeg', 1.0);
         window.print();
-        setTimeout(() => document.getElementById('print-wrapper').innerHTML = '', 1000);
     }
 
-    function saveResult() {
-        const link = document.createElement('a');
-        link.download = "신분증_스캔본.jpg";
-        link.href = getCleanCard().toDataURL("image/jpeg", 1.0);
-        link.click();
+    async function saveResult() {
+        const card = getCleanCard();
+        if(!card) return alert("로딩 중입니다...");
+        card.toBlob(async (blob) => {
+            const file = new File([blob], "신분증.jpg", { type: 'image/jpeg' });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({ files: [file] });
+            } else {
+                const link = document.createElement('a'); link.download = "신분증_스캔.jpg"; link.href = URL.createObjectURL(blob); link.click();
+            }
+        }, 'image/jpeg', 1.0);
     }
 </script>
 </body>
