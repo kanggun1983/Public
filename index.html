@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>신분증 스캐너</title>
+  <!-- OpenCV.js 로드 -->
+  <script async src="https://docs.opencv.org/4.8.0/opencv.js" onload="onOpenCvReady();"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; -webkit-user-select: none; }
+    body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background-color: #121212; color: #fff; display: flex; flex-direction: column; height: 100vh; overflow: hidden; }
+    
+    header { height: 50px; background: #1e1e1e; display: flex; align-items: center; justify-content: space-between; padding: 0 16px; border-bottom: 1px solid #333; }
+    header h1 { font-size: 16px; font-weight: 600; }
+    #status { font-size: 12px; color: #ff9800; }
+    
+    #main-container { flex: 1; position: relative; display: flex; align-items: center; justify-content: center; overflow: hidden; background: #000; }
+    #editor-canvas { max-width: 100%; max-height: 100%; touch-action: none; }
+    
+    /* 손가락 가림 방지 플로팅 돋보기 */
+    #loupe {
+      position: absolute;
+      width: 120px;
+      height: 120px;
+      border: 3px solid #00e676;
+      border-radius: 50%;
+      pointer-events: none;
+      display: none;
+      overflow: hidden;
+      box-shadow: 0 4px 15px rgba(0,0,0,0.8);
+      background: #000;
+      z-index: 100;
+    }
+    #loupe-canvas { width: 100%; height: 100%; }
+    
+    /* 돋보기 십자선 */
+    #loupe::after {
+      content: '';
+      position: absolute;
+      top: 50%; left: 50%;
+      width: 16px; height: 16px;
+      transform: translate(-50%, -50%);
+      border: 1.5px solid #00e676;
+      border-radius: 50%;
+    }
+
+    footer { height: 75px; background: #1e1e1e; display: flex; align-items: center; justify-content: space-around; padding: 0 12px; gap: 10px; }
+    .btn { flex: 1; height: 46px; border-radius: 8px; border: none; font-size: 15px; font-weight: 600; cursor: pointer; display: flex; align-items: center; justify-content: center; }
+    .btn-camera { background: #2979ff; color: #fff; }
+    .btn-warp { background: #00e676; color: #000; }
+    .btn-disabled { opacity: 0.4; pointer-events: none; }
+
+    /* 결과 모달 */
+    #result-modal { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; background: rgba(0,0,0,0.9); display: none; flex-direction: column; align-items: center; justify-content: center; z-index: 200; padding: 20px; }
+    #result-canvas { max-width: 95%; max-height: 70%; border-radius: 8px; box-shadow: 0 0 20px rgba(0,0,0,0.5); }
+    .modal-actions { margin-top: 20px; display: flex; gap: 12px; width: 100%; max-width: 320px; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>신분증 자동 스캔</h1>
+    <span id="status">엔진 로딩 중...</span>
+  </header>
+
+  <div id="main-container">
+    <canvas id="editor-canvas"></canvas>
+    <div id="loupe"><canvas id="loupe-canvas" width="120" height="120"></canvas></div>
+  </div>
+
+  <footer>
+    <input type="file" id="file-input" accept="image/*" capture="environment" style="display: none;">
+    <button class="btn btn-camera" id="btn-shoot">📷 사진 촬영</button>
+    <button class="btn btn-warp btn-disabled" id="btn-scan">이대로 펴기</button>
+  </footer>
+
+  <!-- 결과 화면 모달 -->
+  <div id="result-modal">
+    <canvas id="result-canvas"></canvas>
+    <div class="modal-actions">
+      <button class="btn btn-camera" id="btn-re-edit">다시 수정</button>
+      <button class="btn btn-warp" id="btn-download">저장하기</button>
+    </div>
+  </div>
+
+  <script>
+    let cvReady = false;
+    function onOpenCvReady() {
+      cvReady = true;
+      document.getElementById('status').innerText = "준비 완료";
+      document.getElementById('status').style.color = "#00e676";
+    }
+
+    const fileInput = document.getElementById('file-input');
+    const editorCanvas = document.getElementById('editor-canvas');
+    const ctx = editorCanvas.getContext('2d');
+    const loupe = document.getElementById('loupe');
+    const loupeCanvas = document.getElementById('loupe-canvas');
+    const loupeCtx = loupeCanvas.getContext('2d');
+    const btnScan = document.getElementById('btn-scan');
+    const resultModal = document.getElementById('result-modal');
+    const resultCanvas = document.getElementById('result-canvas');
+
+    let originalImg = null;
+    let points = []; // [좌상, 우상, 우하, 좌하]
+    let activePointIndex = -1;
+    const HANDLE_RADIUS = 18;
+
+    // 1. 카메라 사진 업로드 처리
+    document.getElementById('btn-shoot').onclick = () => fileInput.click();
+    fileInput.onchange = (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = (event) => {
+        originalImg = new Image();
+        originalImg.onload = () => {
+          setupCanvas();
+          btnScan.classList.remove('btn-disabled');
+        };
+        originalImg.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    };
+
+    // 2. 캔버스 초기화 및 기본 모서리 포인트(기본 20% 여백) 세팅
+    function setupCanvas() {
+      const container = document.getElementById('main-container');
+      const maxW = container.clientWidth;
+      const maxH = container.clientHeight;
+
+      const scale = Math.min(maxW / originalImg.width, maxH / originalImg.height);
+      editorCanvas.width = originalImg.width * scale;
+      editorCanvas.height = originalImg.height * scale;
+
+      const w = editorCanvas.width;
+      const h = editorCanvas.height;
+      const padX = w * 0.15;
+      const padY = h * 0.25;
+
+      // 좌상 -> 우상 -> 우하 -> 좌하 순서
+      points = [
+        { x: padX, y: padY },
+        { x: w - padX, y: padY },
+        { x: w - padX, y: h - padY },
+        { x: padX, y: h - padY }
+      ];
+
+      render();
+    }
+
+    // 3. 메인 렌더링 함수
+    function render() {
+      ctx.clearRect(0, 0, editorCanvas.width, editorCanvas.height);
+      ctx.drawImage(originalImg, 0, 0, editorCanvas.width, editorCanvas.height);
+
+      // 다각형 가이드라인
+      ctx.beginPath();
+      ctx.moveTo(points[0].x, points[0].y);
+      for (let i = 1; i < 4; i++) ctx.lineTo(points[i].x, points[i].y);
+      ctx.closePath();
+      ctx.fillStyle = 'rgba(0, 230, 118, 0.15)';
+      ctx.fill();
+      ctx.strokeStyle = '#00e676';
+      ctx.lineWidth = 2;
+      ctx.stroke();
+
+      // 모서리 핸들 그리기
+      points.forEach((p, idx) => {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, HANDLE_RADIUS, 0, Math.PI * 2);
+        ctx.fillStyle = (activePointIndex === idx) ? '#ffea00' : '#ff1744';
+        ctx.fill();
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        // 십자선
+        ctx.beginPath();
+        ctx.moveTo(p.x - 7, p.y); ctx.lineTo(p.x + 7, p.y);
+        ctx.moveTo(p.x, p.y - 7); ctx.lineTo(p.x, p.y + 7);
+        ctx.strokeStyle = '#fff';
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+      });
+    }
+
+    // 4. 돋보기(Loupe) 업데이트 (손가락 위쪽 80px 상단에 표시)
+    function updateLoupe(point, touchPos) {
+      loupe.style.display = 'block';
+      const loupeOffset = 80;
+      loupe.style.left = `${touchPos.x - 60}px`;
+      loupe.style.top = `${touchPos.y - 60 - loupeOffset}px`;
+
+      loupeCtx.clearRect(0, 0, 120, 120);
+      const zoom = 2.5;
+      loupeCtx.drawImage(
+        editorCanvas,
+        point.x - (60 / zoom), point.y - (60 / zoom),
+        120 / zoom, 120 / zoom,
+        0, 0, 120, 120
+      );
+    }
+
+    // 5. 터치 및 마우스 드래그 조작 이벤트
+    function getCanvasCoords(e) {
+      const rect = editorCanvas.getBoundingClientRect();
+      const clientX = e.touches ? e.touches[0].clientX : e.clientX;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      return {
+        x: clientX - rect.left,
+        y: clientY - rect.top,
+        screenX: clientX,
+        screenY: clientY
+      };
+    }
+
+    function onStart(e) {
+      if (!originalImg) return;
+      const coords = getCanvasCoords(e);
+      const touchRadius = HANDLE_RADIUS * 2.2; // 터치 편의를 위해 터치 반경 확장
+
+      activePointIndex = points.findIndex(p => Math.hypot(p.x - coords.x, p.y - coords.y) < touchRadius);
+      if (activePointIndex !== -1) {
+        updateLoupe(points[activePointIndex], { x: coords.screenX, y: coords.screenY });
+        render();
+      }
+    }
+
+    function onMove(e) {
+      if (activePointIndex === -1) return;
+      e.preventDefault();
+      const coords = getCanvasCoords(e);
+
+      // 경계 제한
+      points[activePointIndex].x = Math.max(0, Math.min(editorCanvas.width, coords.x));
+      points[activePointIndex].y = Math.max(0, Math.min(editorCanvas.height, coords.y));
+
+      render();
+      updateLoupe(points[activePointIndex], { x: coords.screenX, y: coords.screenY });
+    }
+
+    function onEnd() {
+      activePointIndex = -1;
+      loupe.style.display = 'none';
+      render();
+    }
+
+    editorCanvas.addEventListener('touchstart', onStart, { passive: false });
+    editorCanvas.addEventListener('touchmove', onMove, { passive: false });
+    editorCanvas.addEventListener('touchend', onEnd);
+    editorCanvas.addEventListener('mousedown', onStart);
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onEnd);
+
+    // 6. 원근 왜곡 보정 (Warp Perspective) 실행
+    btnScan.onclick = () => {
+      if (!cvReady || !originalImg) return;
+
+      // 표준 신분증 비율 (85.6 : 53.98) -> 1000px 기준 계산
+      const dstW = 1000;
+      const dstH = Math.round(dstW * (53.98 / 85.6)); // ~631px
+
+      const scaleX = originalImg.width / editorCanvas.width;
+      const scaleY = originalImg.height / editorCanvas.height;
+
+      // 원본 이미지 기준 실제 좌표
+      const srcCoords = points.map(p => ({ x: p.x * scaleX, y: p.y * scaleY }));
+
+      const srcMat = cv.imread(originalImg);
+      const dstMat = new cv.Mat();
+
+      const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+        srcCoords[0].x, srcCoords[0].y,
+        srcCoords[1].x, srcCoords[1].y,
+        srcCoords[2].x, srcCoords[2].y,
+        srcCoords[3].x, srcCoords[3].y
+      ]);
+
+      const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [
+        0, 0,
+        dstW, 0,
+        dstW, dstH,
+        0, dstH
+      ]);
+
+      const M = cv.getPerspectiveTransform(srcTri, dstTri);
+      const dsize = new cv.Size(dstW, dstH);
+
+      cv.warpPerspective(srcMat, dstMat, M, dsize, cv.INTER_LINEAR, cv.BORDER_CONSTANT, new cv.Scalar());
+
+      // 결과 캔버스에 렌더링
+      resultCanvas.width = dstW;
+      resultCanvas.height = dstH;
+      cv.imshow(resultCanvas, dstMat);
+
+      // 메모리 정리
+      srcMat.delete(); dstMat.delete(); srcTri.delete(); dstTri.delete(); M.delete();
+
+      resultModal.style.display = 'flex';
+    };
+
+    // 7. 결과 모달 액션
+    document.getElementById('btn-re-edit').onclick = () => {
+      resultModal.style.display = 'none';
+    };
+
+    document.getElementById('btn-download').onclick = () => {
+      const link = document.createElement('a');
+      link.download = `ID_SCAN_${Date.now()}.jpg`;
+      link.href = resultCanvas.toDataURL('image/jpeg', 0.95);
+      link.click();
+    };
+  </script>
+</body>
+</html>
