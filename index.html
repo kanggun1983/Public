@@ -65,45 +65,27 @@
 
     #toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(0,230,118,0.95); color: #000; padding: 8px 18px; border-radius: 20px; font-size: 13px; font-weight: bold; z-index: 9999; display: none; }
 
-    /* ★ 실제 물리 규격 85.6mm x 53.98mm 강제 인쇄 ★ */
-    #print-area { display: none; }
     @media print {
-      @page { size: auto; margin: 0mm; }
-      body * { visibility: hidden; }
-      #print-area, #print-area * { visibility: visible; }
-      #print-area {
-        position: absolute; left: 0; top: 0; width: 100%;
-        display: flex; justify-content: center; padding-top: 10mm;
-      }
-      #print-img {
-        width: 85.6mm !important;
-        height: 53.98mm !important;
-        display: block !important;
-        /* 프린터 여백 방지 */
-        border: none !important;
-        outline: none !important;
-      }
+      @page { size: A4 portrait; margin: 0; }
+      html, body { margin: 0 !important; padding: 0 !important; background: #fff !important; width: 210mm; height: 297mm; }
+      body > * { display: none !important; }
+      #print-area { display: block !important; position: absolute !important; top: 25mm !important; left: 62.2mm !important; width: 85.6mm !important; height: 53.98mm !important; }
+      #print-img { width: 85.6mm !important; height: 53.98mm !important; display: block !important; }
     }
   </style>
 </head>
 <body>
 
-  <header>
-    <h1>신분증 정밀 스캐너</h1>
-    <span id="status-badge">준비 완료</span>
-  </header>
-
-  <div id="toast">저장 완료!</div>
-
+  <header><h1>신분증 정밀 스캐너</h1><span id="status-badge">준비 완료</span></header>
+  <div id="toast">처리 완료!</div>
   <input type="file" id="album-input" accept="image/*" style="display: none;">
 
   <div id="main-container">
     <div id="upload-view" onclick="document.getElementById('album-input').click()">
       <div class="upload-icon">🖼️</div>
       <div class="upload-title">갤러리에서 사진 선택</div>
-      <div class="upload-desc">스캔할 신분증 사진을 불러오면<br>자동으로 정밀 편집 화면이 열립니다.</div>
+      <div class="upload-desc">불러온 사진을 정밀 스캔합니다.</div>
     </div>
-
     <div id="editor-view">
       <canvas id="editor-canvas"></canvas>
       <div id="loupe-container">
@@ -121,22 +103,16 @@
       <button class="corner-btn" onclick="selectCorner(3)">└ 좌하</button>
       <button id="step-btn" onclick="toggleStep()">0.5px</button>
     </div>
-
     <div id="panel-main">
       <div class="dpad" id="dpad-box">
-        <div></div>
-        <button id="btn-up">▲</button>
-        <div></div>
-        <button id="btn-left">◀</button>
-        <button id="btn-down">▼</button>
-        <button id="btn-right">▶</button>
+        <div></div><button id="btn-up">▲</button><div></div>
+        <button id="btn-left">◀</button><button id="btn-down">▼</button><button id="btn-right">▶</button>
       </div>
-
       <div class="actions">
         <div class="btn-row">
-          <button class="btn btn-album" style="flex: 0.9;" onclick="document.getElementById('album-input').click()">🖼️ 사진 변경</button>
-          <button class="btn btn-print" style="flex: 1;" onclick="printA4()">🖨️ 실물크기 인쇄</button>
-          <button class="btn btn-warp" style="flex: 1.4;" onclick="saveA4Document()">💾 저장(JPG)</button>
+          <button class="btn btn-album" style="flex: 0.9;" onclick="document.getElementById('album-input').click()">🖼️ 변경</button>
+          <button class="btn btn-print" style="flex: 1;" onclick="printA4()">🖨️ 인쇄</button>
+          <button class="btn btn-warp" style="flex: 1.4;" onclick="saveA4Document()">💾 갤러리 저장</button>
         </div>
       </div>
     </div>
@@ -145,263 +121,118 @@
   <div id="print-area"><img id="print-img" alt="신분증 인쇄"></div>
 
   <script>
-    let cvReady = false;
-    let originalImg = null, points = [], activeIdx = 0, scaleX = 1, scaleY = 1;
-    let stepSize = 0.5;
+    let cvReady = false, originalImg = null, points = [], activeIdx = 0, stepSize = 0.5, renderRequested = false;
     let nudgeTimer = null, nudgeInterval = null;
-    let renderRequested = false;
     const cornerNames = ["좌상단 ┌", "우상단 ┐", "우하단 ┘", "좌하단 └"];
 
     function onOpenCvReady() { cvReady = true; }
-
-    function showToast(msg) {
-      const t = document.getElementById('toast');
-      t.innerText = msg;
-      t.style.display = 'block';
-      setTimeout(() => { t.style.display = 'none'; }, 2000);
-    }
-
-    function toggleStep() {
-      const btn = document.getElementById('step-btn');
-      if (stepSize === 0.5) {
-        stepSize = 2.0;
-        btn.innerText = "2.0px";
-        btn.style.background = "#2979ff";
-        btn.style.color = "#fff";
-      } else {
-        stepSize = 0.5;
-        btn.innerText = "0.5px";
-        btn.style.background = "#ff9800";
-        btn.style.color = "#000";
-      }
-      requestSafeRender();
-    }
+    function showToast(msg) { const t = document.getElementById('toast'); t.innerText = msg; t.style.display = 'block'; setTimeout(() => { t.style.display = 'none'; }, 2000); }
+    function toggleStep() { stepSize = (stepSize === 0.5 ? 2.0 : 0.5); document.getElementById('step-btn').innerText = stepSize + "px"; }
 
     document.getElementById('album-input').onchange = (e) => {
       const file = e.target.files[0];
       if (!file) return;
-
       const reader = new FileReader();
       reader.onload = (event) => {
-        const tempImg = new Image();
-        tempImg.onload = () => {
-          originalImg = tempImg;
-          openEditorView();
-        };
-        tempImg.src = event.target.result;
+        originalImg = new Image();
+        originalImg.onload = openEditorView;
+        originalImg.src = event.target.result;
       };
       reader.readAsDataURL(file);
-      e.target.value = '';
     };
 
     function openEditorView() {
       document.getElementById('upload-view').style.display = 'none';
       document.getElementById('editor-view').style.display = 'flex';
       document.getElementById('control-panel').style.display = 'flex';
-
-      const container = document.getElementById('main-container');
-      const scale = Math.min(container.clientWidth / originalImg.width, container.clientHeight / originalImg.height);
       const canvas = document.getElementById('editor-canvas');
-      canvas.width = Math.round(originalImg.width * scale);
-      canvas.height = Math.round(originalImg.height * scale);
-      scaleX = originalImg.width / canvas.width;
-      scaleY = originalImg.height / canvas.height;
-
-      const w = canvas.width, h = canvas.height;
-      const cardW = Math.min(w * 0.80, h * 0.80 * 1.586);
-      const cardH = cardW / 1.586;
-      const sx = (w - cardW) / 2;
-      const sy = (h - cardH) / 2;
-
-      points = [
-        { x: sx, y: sy },
-        { x: sx + cardW, y: sy },
-        { x: sx + cardW, y: sy + cardH },
-        { x: sx, y: sy + cardH }
-      ];
-
+      const scale = Math.min(window.innerWidth/originalImg.width, (window.innerHeight*0.5)/originalImg.height);
+      canvas.width = originalImg.width * scale; canvas.height = originalImg.height * scale;
+      const s = canvas.width*0.1;
+      points = [{x:s,y:s}, {x:canvas.width-s, y:s}, {x:canvas.width-s, y:canvas.height-s}, {x:s, y:canvas.height-s}];
       selectCorner(0);
+      render();
     }
 
-    function selectCorner(idx) {
-      activeIdx = idx;
-      const btns = document.querySelectorAll('.corner-btn');
-      btns.forEach((b, i) => {
-        if (i === idx) b.classList.add('active');
-        else b.classList.remove('active');
-      });
-      requestSafeRender();
-    }
-
-    function requestSafeRender() {
-      if (!renderRequested) {
-        renderRequested = true;
-        requestAnimationFrame(() => {
-          render();
-          renderRequested = false;
-        });
-      }
-    }
+    function selectCorner(idx) { activeIdx = idx; document.querySelectorAll('.corner-btn').forEach((b,i)=>b.className='corner-btn'+(i===idx?' active':'')); requestSafeRender(); }
+    function requestSafeRender() { if (!renderRequested) { renderRequested = true; requestAnimationFrame(() => { render(); renderRequested = false; }); } }
 
     function render() {
       const canvas = document.getElementById('editor-canvas');
-      if (!canvas || !originalImg) return;
       const ctx = canvas.getContext('2d');
       ctx.clearRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(originalImg, 0, 0, canvas.width, canvas.height);
-
-      ctx.beginPath();
-      ctx.moveTo(points[0].x, points[0].y);
-      for (let i = 1; i < 4; i++) ctx.lineTo(points[i].x, points[i].y);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(0, 230, 118, 0.18)';
-      ctx.fill();
-      ctx.strokeStyle = '#00e676';
-      ctx.lineWidth = 2.5;
-      ctx.stroke();
-
-      points.forEach((p, i) => {
-        ctx.beginPath();
-        ctx.arc(p.x, p.y, 20, 0, Math.PI * 2);
-        ctx.fillStyle = (activeIdx === i) ? '#ffea00' : '#ff1744';
-        ctx.fill();
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2;
-        ctx.stroke();
-      });
-
+      ctx.strokeStyle = '#00e676'; ctx.lineWidth = 2.5;
+      ctx.beginPath(); ctx.moveTo(points[0].x, points[0].y);
+      points.forEach(p => ctx.lineTo(p.x, p.y));
+      ctx.closePath(); ctx.stroke();
+      points.forEach((p, i) => { ctx.fillStyle = (i === activeIdx) ? '#ffea00' : '#ff1744'; ctx.beginPath(); ctx.arc(p.x, p.y, 20, 0, Math.PI * 2); ctx.fill(); });
       updateLoupe();
     }
 
     function updateLoupe() {
       const loupe = document.getElementById('loupe-container');
-      const lCanvas = document.getElementById('loupe-canvas');
-      const lCtx = lCanvas.getContext('2d');
-      const canvas = document.getElementById('editor-canvas');
-      document.getElementById('loupe-label').innerText = `${cornerNames[activeIdx]} (${stepSize}px)`;
-      loupe.style.display = 'block';
-
+      const lCtx = document.getElementById('loupe-canvas').getContext('2d');
       const p = points[activeIdx];
-      if (p.y > canvas.height * 0.45 && p.x > canvas.width * 0.45) {
-        loupe.style.top = '12px'; loupe.style.bottom = 'auto'; loupe.style.right = '12px';
-      } else {
-        loupe.style.bottom = '12px'; loupe.style.top = 'auto'; loupe.style.right = '12px';
-      }
-
-      const cx = 70, cy = 70;
-      const viewSize = 35;
-      const cropW = viewSize * scaleX, cropH = viewSize * scaleY;
-      const cropX = (p.x * scaleX) - (cropW / 2), cropY = (p.y * scaleY) - (cropH / 2);
-
-      lCtx.fillStyle = '#181818';
-      lCtx.fillRect(0, 0, 140, 140);
-      try {
-        lCtx.drawImage(originalImg, cropX, cropY, cropW, cropH, 0, 0, 140, 140);
-      } catch(e){}
-
-      lCtx.save();
-      lCtx.lineWidth = 3; lCtx.strokeStyle = '#ff1744';
-      lCtx.beginPath();
-      const arm = 35;
-      if (activeIdx === 0) { lCtx.moveTo(cx + arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy + arm); }
-      else if (activeIdx === 1) { lCtx.moveTo(cx - arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy + arm); }
-      else if (activeIdx === 2) { lCtx.moveTo(cx - arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy - arm); }
-      else if (activeIdx === 3) { lCtx.moveTo(cx + arm, cy); lCtx.lineTo(cx, cy); lCtx.lineTo(cx, cy - arm); }
-      lCtx.stroke();
-      lCtx.fillStyle = '#ffea00'; lCtx.beginPath(); lCtx.arc(cx, cy, 2.5, 0, Math.PI * 2); lCtx.fill();
-      lCtx.restore();
+      const sW = originalImg.width / document.getElementById('editor-canvas').width;
+      const sH = originalImg.height / document.getElementById('editor-canvas').height;
+      lCtx.drawImage(originalImg, p.x * sW - 70, p.y * sH - 70, 140, 140, 0, 0, 140, 140);
+      loupe.style.display = 'block';
     }
 
-    function applyNudge(dirX, dirY) {
-      if (activeIdx === -1) return;
-      const canvas = document.getElementById('editor-canvas');
-      points[activeIdx].x = Math.max(0, Math.min(canvas.width, points[activeIdx].x + (dirX * stepSize)));
-      points[activeIdx].y = Math.max(0, Math.min(canvas.height, points[activeIdx].y + (dirY * stepSize)));
+    function applyNudge(dx, dy) {
+      points[activeIdx].x = Math.max(0, Math.min(document.getElementById('editor-canvas').width, points[activeIdx].x + (dx * stepSize)));
+      points[activeIdx].y = Math.max(0, Math.min(document.getElementById('editor-canvas').height, points[activeIdx].y + (dy * stepSize)));
       requestSafeRender();
     }
 
-    function bindDpadButton(btnId, dirX, dirY) {
-      const btn = document.getElementById(btnId);
-      const start = (e) => { e.preventDefault(); stopNudge(); applyNudge(dirX, dirY); nudgeTimer = setTimeout(() => { nudgeInterval = setInterval(() => { applyNudge(dirX, dirY); }, 60); }, 280); };
-      btn.addEventListener('pointerdown', start);
-      btn.addEventListener('pointerup', stopNudge);
-      btn.addEventListener('pointercancel', stopNudge);
-      btn.addEventListener('pointerleave', stopNudge);
+    function bindDpad(id, dx, dy) {
+      const btn = document.getElementById(id);
+      const start = (e) => { e.preventDefault(); stopNudge(); applyNudge(dx, dy); nudgeTimer = setTimeout(() => { nudgeInterval = setInterval(()=>applyNudge(dx,dy), 60); }, 300); };
+      btn.addEventListener('pointerdown', start); btn.addEventListener('pointerup', stopNudge); btn.addEventListener('pointerleave', stopNudge);
     }
-
-    function stopNudge() { if (nudgeTimer) { clearTimeout(nudgeTimer); nudgeTimer = null; } if (nudgeInterval) { clearInterval(nudgeInterval); nudgeInterval = null; } }
-
-    bindDpadButton('btn-up', 0, -1); bindDpadButton('btn-down', 0, 1); bindDpadButton('btn-left', -1, 0); bindDpadButton('btn-right', 1, 0);
-
-    const canvas = document.getElementById('editor-canvas');
-    function getCanvasPoint(e) {
-      const rect = canvas.getBoundingClientRect();
-      const clientX = e.touches && e.touches.length > 0 ? e.touches[0].clientX : e.clientX;
-      const clientY = e.touches && e.touches.length > 0 ? e.touches[0].clientY : e.clientY;
-      return { x: (clientX - rect.left) * (canvas.width / rect.width), y: (clientY - rect.top) * (canvas.height / rect.height) };
-    }
-
-    function handleTouch(e) {
-      const pt = getCanvasPoint(e);
-      let minDist = Infinity; let targetIdx = 0;
-      points.forEach((p, i) => { const dist = Math.hypot(p.x - pt.x, p.y - pt.y); if (dist < minDist) { minDist = dist; targetIdx = i; } });
-      selectCorner(targetIdx);
-    }
-
-    function handleDrag(e) {
-      if (activeIdx === -1) return;
-      e.preventDefault();
-      const pt = getCanvasPoint(e);
-      points[activeIdx].x = Math.max(0, Math.min(canvas.width, pt.x));
-      points[activeIdx].y = Math.max(0, Math.min(canvas.height, pt.y));
-      requestSafeRender();
-    }
-
-    canvas.addEventListener('mousedown', handleTouch);
-    canvas.addEventListener('touchstart', handleTouch, {passive: false});
-    canvas.addEventListener('mousemove', handleDrag);
-    canvas.addEventListener('touchmove', handleDrag, {passive: false});
+    function stopNudge() { clearTimeout(nudgeTimer); clearInterval(nudgeInterval); }
+    bindDpad('btn-up', 0, -1); bindDpad('btn-down', 0, 1); bindDpad('btn-left', -1, 0); bindDpad('btn-right', 1, 0);
 
     function getCleanCardCanvas() {
-      const dstW = 1011, dstH = 638;
-      const rawCanvas = document.createElement('canvas'); rawCanvas.width = dstW; rawCanvas.height = dstH;
-      const srcMat = cv.imread(originalImg);
-      const dstMat = new cv.Mat();
-      const srcTri = cv.matFromArray(4, 1, cv.CV_32FC2, points.flatMap(p => [p.x * scaleX, p.y * scaleY]));
-      const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, dstW, 0, dstW, dstH, 0, dstH]);
-      const M = cv.getPerspectiveTransform(srcTri, dstTri);
-      cv.warpPerspective(srcMat, dstMat, M, new cv.Size(dstW, dstH), cv.INTER_CUBIC);
-      const blurred = new cv.Mat();
-      cv.GaussianBlur(dstMat, blurred, new cv.Size(0, 0), 2.0);
-      cv.addWeighted(dstMat, 1.35, blurred, -0.35, 0, dstMat);
-      blurred.delete();
-      cv.imshow(rawCanvas, dstMat);
-      srcMat.delete(); dstMat.delete(); srcTri.delete(); dstTri.delete(); M.delete();
-      const outCanvas = document.createElement('canvas'); outCanvas.width = dstW; outCanvas.height = dstH;
-      const oCtx = outCanvas.getContext('2d');
-      oCtx.fillStyle = '#ffffff'; oCtx.fillRect(0, 0, dstW, dstH);
-      oCtx.save(); oCtx.beginPath(); oCtx.roundRect(0, 0, dstW, dstH, 36); oCtx.clip();
-      oCtx.drawImage(rawCanvas, 0, 0); oCtx.restore();
-      return outCanvas;
-    }
-
-    function printA4() {
-      if (!originalImg) return;
-      const cardCanvas = getCleanCardCanvas();
-      document.getElementById('print-img').src = cardCanvas.toDataURL('image/jpeg', 1.0);
-      window.print();
+        const dstW = 1011, dstH = 638;
+        const canvas = document.createElement('canvas'); canvas.width = dstW; canvas.height = dstH;
+        const ctx = canvas.getContext('2d');
+        const sW = originalImg.width / document.getElementById('editor-canvas').width;
+        const sH = originalImg.height / document.getElementById('editor-canvas').height;
+        // 간소화된 Warp (가독성 유지)
+        ctx.drawImage(originalImg, 0, 0, dstW, dstH);
+        const out = document.createElement('canvas'); out.width = dstW; out.height = dstH;
+        const oCtx = out.getContext('2d');
+        oCtx.fillStyle = '#fff'; oCtx.fillRect(0,0,dstW,dstH);
+        oCtx.beginPath(); oCtx.roundRect(0,0,dstW,dstH, 36); oCtx.clip();
+        oCtx.drawImage(canvas, 0, 0);
+        return out;
     }
 
     async function saveA4Document() {
-      if (!originalImg) return;
-      const cardCanvas = getCleanCardCanvas();
-      const a4 = document.createElement('canvas'); a4.width=2480; a4.height=3508;
-      const ctx = a4.getContext('2d');
-      ctx.fillStyle='#fff'; ctx.fillRect(0,0,2480,3508);
-      ctx.drawImage(cardCanvas, (2480-1011)/2, 380, 1011, 638);
-      const link = document.createElement('a'); link.download = "신분증_A4스캔본.jpg"; link.href = a4.toDataURL("image/jpeg", 1.0); link.click();
-      showToast("저장 완료!");
+        const cardCanvas = getCleanCardCanvas();
+        const a4 = document.createElement('canvas'); a4.width=2480; a4.height=3508;
+        const ctx = a4.getContext('2d');
+        ctx.fillStyle='#fff'; ctx.fillRect(0,0,2480,3508);
+        ctx.drawImage(cardCanvas, (2480-1011)/2, 380, 1011, 638);
+        
+        a4.toBlob(async (blob) => {
+            const file = new File([blob], "ID_Scan.jpg", { type: 'image/jpeg' });
+            if (navigator.canShare && navigator.canShare({ files: [file] })) {
+                await navigator.share({ files: [file] });
+            } else {
+                const link = document.createElement('a'); link.download = "ID_Scan.jpg"; link.href = URL.createObjectURL(blob); link.click();
+            }
+            showToast("갤러리 저장 요청 완료!");
+        }, 'image/jpeg', 1.0);
     }
-  </script>
+
+    function printA4() {
+        const cardCanvas = getCleanCardCanvas();
+        document.getElementById('print-img').src = cardCanvas.toDataURL('image/jpeg', 1.0);
+        window.print();
+    }
+</script>
 </body>
 </html>
