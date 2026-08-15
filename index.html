@@ -11,12 +11,11 @@
     
     header { height: 44px; background: #181818; display: flex; align-items: center; justify-content: space-between; padding: 0 12px; border-bottom: 1px solid #2c2c2c; z-index: 20; }
     header h1 { font-size: 15px; font-weight: 600; }
-    #toggle-auto { background: #333; color: #00e676; border: 1px solid #00e676; border-radius: 20px; font-size: 11px; font-weight: bold; padding: 4px 10px; cursor: pointer; }
-    #toggle-auto.off { color: #888; border-color: #555; background: #222; }
+    #status-badge { font-size: 11px; font-weight: bold; color: #00e676; background: #222; padding: 3px 8px; border-radius: 12px; border: 1px solid #333; }
 
     #main-container { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #000; }
     
-    /* 카메라 화면 */
+    /* 1. 카메라 화면 */
     #camera-view { width: 100%; height: 100%; position: absolute; top: 0; left: 0; display: flex; align-items: center; justify-content: center; }
     #video { width: 100%; height: 100%; object-fit: cover; }
     
@@ -29,17 +28,15 @@
       width: 86vw; max-width: 360px; aspect-ratio: 1.586 / 1;
       border: 3.5px solid #00e676; border-radius: 12px;
       box-shadow: 0 0 0 9999px rgba(0, 0, 0, 0.65);
-      position: relative; transition: border-color 0.2s;
+      position: relative;
     }
-    #guide-box.detecting { border-color: #ffea00; }
-    #guide-box.captured { border-color: #ffffff; box-shadow: 0 0 0 9999px rgba(255, 255, 255, 0.85); }
     #guide-msg {
       margin-top: 20px; font-size: 13px; color: #00e676;
-      background: rgba(0,0,0,0.8); padding: 5px 14px; border-radius: 20px;
+      background: rgba(0,0,0,0.85); padding: 5px 14px; border-radius: 20px;
       font-weight: 500; text-align: center;
     }
 
-    /* 편집 화면 */
+    /* 2. 편집 화면 */
     #editor-view { width: 100%; height: 100%; display: none; align-items: center; justify-content: center; position: absolute; top:0; left:0; background: #0d0d0d; }
     #editor-canvas { max-width: 100%; max-height: 100%; object-fit: contain; touch-action: none; }
 
@@ -49,7 +46,6 @@
       border: 2.5px solid #00e676; border-radius: 10px; background: #181818; 
       z-index: 50; display: none; pointer-events: none; overflow: hidden;
       box-shadow: 0 6px 20px rgba(0,0,0,0.9);
-      transition: top 0.2s, bottom 0.2s;
     }
     #loupe-canvas { width: 100%; height: 100%; }
     #loupe-label { position: absolute; top: 4px; left: 6px; font-size: 11px; font-weight: bold; color: #00e676; background: rgba(0,0,0,0.8); padding: 2px 5px; border-radius: 4px; z-index: 10; }
@@ -82,7 +78,7 @@
 
     #toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(0,230,118,0.95); color: #000; padding: 8px 18px; border-radius: 20px; font-size: 13px; font-weight: bold; z-index: 9999; display: none; }
 
-    /* A4 실제 규격(85.6mm x 53.98mm) 1:1 실물 인쇄 전용 CSS */
+    /* A4 실제 규격 1:1 출력 전용 */
     #print-area { display: none; }
     @media print {
       @page { size: A4 portrait; margin: 0; }
@@ -92,17 +88,14 @@
         display: block !important;
         position: absolute !important;
         top: 25mm !important;
-        left: 62.2mm !important; /* 가로 정중앙: (210mm - 85.6mm) / 2 */
+        left: 62.2mm !important;
         width: 85.6mm !important;
         height: 53.98mm !important;
-        margin: 0 !important;
-        padding: 0 !important;
       }
       #print-area img {
         width: 85.6mm !important;
         height: 53.98mm !important;
         display: block !important;
-        object-fit: fill !important;
       }
     }
   </style>
@@ -110,8 +103,8 @@
 <body>
 
   <header>
-    <h1>신분증 스마트 스캐너</h1>
-    <button id="toggle-auto" onclick="toggleAutoMode()">⚡ 자동촬영 ON</button>
+    <h1>신분증 고화질 스캐너</h1>
+    <span id="status-badge">HD 모드</span>
   </header>
 
   <div id="toast">저장 완료!</div>
@@ -121,7 +114,7 @@
       <video id="video" autoplay playsinline muted></video>
       <div id="guide-overlay">
         <div id="guide-box"></div>
-        <div id="guide-msg">신분증을 초록 사각형에 맞춰주세요</div>
+        <div id="guide-msg">신분증을 맞추고 [📸 촬영]을 누르세요</div>
       </div>
     </div>
 
@@ -144,16 +137,18 @@
 
     <div id="panel-main">
       <div class="dpad" id="dpad-box">
-        <div></div><button onclick="nudge(0,-3)">▲</button><div></div>
-        <button onclick="nudge(-3,0)">◀</button><button onclick="nudge(0,3)">▼</button><button onclick="nudge(3,0)">▶</button>
+        <div></div><button onclick="nudge(0,-2)">▲</button><div></div>
+        <button onclick="nudge(-2,0)">◀</button><button onclick="nudge(0,2)">▼</button><button onclick="nudge(2,0)">▶</button>
       </div>
 
       <div class="actions">
+        <!-- 원본 고화소 센서 촬영용 input -->
+        <input type="file" id="native-cam-input" accept="image/*" capture="environment" style="display: none;">
         <input type="file" id="album-input" accept="image/*" style="display: none;">
         
         <div class="btn-row" id="cam-actions">
           <button class="btn btn-album" style="flex: 1;" onclick="document.getElementById('album-input').click()">🖼️ 앨범</button>
-          <button class="btn btn-camera" style="flex: 2;" onclick="triggerCapture()">📸 사진 촬영</button>
+          <button class="btn btn-camera" style="flex: 2;" onclick="document.getElementById('native-cam-input').click()">📸 고화질 촬영</button>
         </div>
 
         <div class="btn-row" id="edit-actions" style="display: none;">
@@ -168,9 +163,8 @@
   <div id="print-area"><img id="print-img" alt="신분증 인쇄"></div>
 
   <script>
-    let cvReady = false, stream = null, imageTrack = null, imageCapture = null;
+    let cvReady = false, stream = null;
     let originalImg = null, points = [], activeIdx = 0, scaleX = 1, scaleY = 1;
-    let autoScanInterval = null, autoModeEnabled = true, stabilityCount = 0, isCapturing = false;
     const cornerNames = ["좌상단 ┌", "우상단 ┐", "우하단 ┘", "좌하단 └"];
 
     function onOpenCvReady() { cvReady = true; }
@@ -182,168 +176,20 @@
       setTimeout(() => { t.style.display = 'none'; }, 2000);
     }
 
-    function toggleAutoMode() {
-      autoModeEnabled = !autoModeEnabled;
-      const btn = document.getElementById('toggle-auto');
-      if (autoModeEnabled) {
-        btn.innerText = "⚡ 자동촬영 ON";
-        btn.classList.remove('off');
-      } else {
-        btn.innerText = "🖐️ 수동촬영 모드";
-        btn.classList.add('off');
-        document.getElementById('guide-msg').innerText = "신분증을 맞추고 [📸 사진 촬영]을 누르세요";
-      }
-      stabilityCount = 0;
-    }
-
-    // 4K/FHD 최고 화질 카메라 연결 (플래시 비활성화)
     async function startCamera() {
       try {
         if (stream) stream.getTracks().forEach(t => t.stop());
         stream = await navigator.mediaDevices.getUserMedia({
-          video: { 
-            facingMode: { ideal: "environment" }, 
-            width: { ideal: 3840, min: 1920 }, 
-            height: { ideal: 2160, min: 1080 },
-            advanced: [{ torch: false }]
-          },
+          video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 }, height: { ideal: 1080 } },
           audio: false
         });
-        const video = document.getElementById('video');
-        video.srcObject = stream;
-        imageTrack = stream.getVideoTracks()[0];
-        if (window.ImageCapture && imageTrack) {
-          imageCapture = new ImageCapture(imageTrack);
-        }
-        video.onloadedmetadata = () => {
-          video.play();
-          startAutoDetection();
-        };
-      } catch (err) {
-        try {
-          stream = await navigator.mediaDevices.getUserMedia({
-            video: { facingMode: { ideal: "environment" }, width: { ideal: 1920 } },
-            audio: false
-          });
-          document.getElementById('video').srcObject = stream;
-          startAutoDetection();
-        } catch(e) {
-          alert("카메라 권한을 허용해주세요.");
-        }
-      }
+        document.getElementById('video').srcObject = stream;
+      } catch (err) {}
     }
     window.addEventListener('load', startCamera);
 
-    // 자동 감지 루프
-    function startAutoDetection() {
-      if (autoScanInterval) clearInterval(autoScanInterval);
-      const testCanvas = document.createElement('canvas');
-      const tCtx = testCanvas.getContext('2d', { willReadFrequently: true });
-      testCanvas.width = 160;
-      testCanvas.height = 100;
-
-      autoScanInterval = setInterval(() => {
-        if (!autoModeEnabled || isCapturing || document.getElementById('camera-view').style.display === 'none') return;
-        const video = document.getElementById('video');
-        if (!video.videoWidth || video.readyState < 2) return;
-
-        const vRect = video.getBoundingClientRect();
-        const gRect = document.getElementById('guide-box').getBoundingClientRect();
-        const scale = Math.max(video.videoWidth / vRect.width, video.videoHeight / vRect.height);
-        const offsetX = (vRect.width - (video.videoWidth / scale)) / 2;
-        const offsetY = (vRect.height - (video.videoHeight / scale)) / 2;
-
-        const cropX = (gRect.left - vRect.left - offsetX) * scale;
-        const cropY = (gRect.top - vRect.top - offsetY) * scale;
-        const cropW = gRect.width * scale;
-        const cropH = gRect.height * scale;
-
-        tCtx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, 160, 100);
-        const imgData = tCtx.getImageData(0, 0, 160, 100);
-        const d = imgData.data;
-
-        let edgeScore = 0;
-        for (let y = 1; y < 99; y += 2) {
-          for (let x = 1; x < 159; x += 2) {
-            let idx = (y * 160 + x) * 4;
-            let val = (d[idx] + d[idx+1] + d[idx+2]) / 3;
-            let valRight = (d[idx+4] + d[idx+5] + d[idx+6]) / 3;
-            let valDown = (d[idx+640] + d[idx+641] + d[idx+642]) / 3;
-            edgeScore += Math.abs(val - valRight) + Math.abs(val - valDown);
-          }
-        }
-        edgeScore = edgeScore / (80 * 50);
-
-        const gBox = document.getElementById('guide-box');
-        const gMsg = document.getElementById('guide-msg');
-
-        if (edgeScore > 18.0) {
-          stabilityCount++;
-          gBox.classList.add('detecting');
-          gMsg.innerText = `신분증 감지됨! 움직이지 마세요 (${stabilityCount}/4)`;
-          gMsg.style.color = '#ffea00';
-
-          if (stabilityCount >= 4) {
-            triggerCapture();
-          }
-        } else {
-          stabilityCount = 0;
-          gBox.classList.remove('detecting');
-          gMsg.innerText = "신분증을 초록 사각형에 맞춰주세요";
-          gMsg.style.color = '#00e676';
-        }
-      }, 250);
-    }
-
-    function triggerCapture() {
-      if (isCapturing) return;
-      isCapturing = true;
-
-      const gBox = document.getElementById('guide-box');
-      gBox.classList.add('captured');
-      if (navigator.vibrate) navigator.vibrate(60);
-
-      setTimeout(() => {
-        gBox.classList.remove('captured', 'detecting');
-        captureToEditor();
-      }, 100);
-    }
-
-    // 초고화소 센서 원본 캡처 (선명도 극대화)
-    async function captureToEditor() {
-      const video = document.getElementById('video');
-      let capturedCanvas = null;
-
-      if (imageCapture) {
-        try {
-          const blob = await imageCapture.takePhoto();
-          const imgBitmap = await createImageBitmap(blob);
-          const memCanvas = document.createElement('canvas');
-          memCanvas.width = imgBitmap.width;
-          memCanvas.height = imgBitmap.height;
-          memCanvas.getContext('2d').drawImage(imgBitmap, 0, 0);
-          capturedCanvas = memCanvas;
-        } catch(e) {
-          capturedCanvas = null;
-        }
-      }
-
-      if (!capturedCanvas) {
-        const memCanvas = document.createElement('canvas');
-        memCanvas.width = video.videoWidth;
-        memCanvas.height = video.videoHeight;
-        memCanvas.getContext('2d').drawImage(video, 0, 0);
-        capturedCanvas = memCanvas;
-      }
-
-      originalImg = capturedCanvas;
-      openEditorView();
-    }
-
-    document.getElementById('album-input').onchange = (e) => {
-      const file = e.target.files[0];
+    function loadFullResImage(file) {
       if (!file) return;
-
       const reader = new FileReader();
       reader.onload = (event) => {
         const tempImg = new Image();
@@ -354,6 +200,14 @@
         tempImg.src = event.target.result;
       };
       reader.readAsDataURL(file);
+    }
+
+    document.getElementById('native-cam-input').onchange = (e) => {
+      loadFullResImage(e.target.files[0]);
+      e.target.value = '';
+    };
+    document.getElementById('album-input').onchange = (e) => {
+      loadFullResImage(e.target.files[0]);
       e.target.value = '';
     };
 
@@ -374,7 +228,7 @@
       scaleY = originalImg.height / canvas.height;
 
       const w = canvas.width, h = canvas.height;
-      const cardW = Math.min(w * 0.76, h * 0.76 * 1.586);
+      const cardW = Math.min(w * 0.80, h * 0.80 * 1.586);
       const cardH = cardW / 1.586;
       const sx = (w - cardW) / 2;
       const sy = (h - cardH) / 2;
@@ -406,8 +260,6 @@
       document.getElementById('cam-actions').style.display = 'flex';
       document.getElementById('dpad-box').style.display = 'none';
       document.getElementById('corner-selector').style.display = 'none';
-      isCapturing = false;
-      stabilityCount = 0;
       startCamera();
     }
 
@@ -531,9 +383,10 @@
     canvas.addEventListener('mousemove', handleDrag);
     canvas.addEventListener('touchmove', handleDrag, {passive:false});
 
-    // 300 DPI 초고화질 왜곡 보정 및 선명화 (Unsharp Masking)
+    // 초고화질 왜곡 보정 및 자른 흔적(검은 배경) 완전 제거 마스킹
     function getCleanCardCanvas() {
-      const dstW = 1011, dstH = 638; // 300 DPI 실물 규격
+      // 600 DPI 슈퍼샘플링 (2022 x 1276)
+      const dstW = 2022, dstH = 1276;
       const rawCanvas = document.createElement('canvas');
       rawCanvas.width = dstW; rawCanvas.height = dstH;
 
@@ -543,48 +396,61 @@
       const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, dstW, 0, dstW, dstH, 0, dstH]);
       const M = cv.getPerspectiveTransform(srcTri, dstTri);
       
-      // 고화질 CUBIC 보간
       cv.warpPerspective(srcMat, dstMat, M, new cv.Size(dstW, dstH), cv.INTER_CUBIC);
 
-      // 글자 및 디테일 선명화 필터
+      // 초정밀 텍스트 선명화 필터
       const blurred = new cv.Mat();
-      cv.GaussianBlur(dstMat, blurred, new cv.Size(0, 0), 2.2);
-      cv.addWeighted(dstMat, 1.4, blurred, -0.4, 0, dstMat);
+      cv.GaussianBlur(dstMat, blurred, new cv.Size(0, 0), 2.0);
+      cv.addWeighted(dstMat, 1.35, blurred, -0.35, 0, dstMat);
       blurred.delete();
 
       cv.imshow(rawCanvas, dstMat);
 
       srcMat.delete(); dstMat.delete(); srcTri.delete(); dstTri.delete(); M.delete();
 
+      // 모서리 배경 잔여물 제거용 순백색 마스킹
       const outCanvas = document.createElement('canvas');
       outCanvas.width = dstW; outCanvas.height = dstH;
       const oCtx = outCanvas.getContext('2d');
 
+      // 바깥 배경을 100% 순백색(#FFFFFF)으로 채움
+      oCtx.fillStyle = '#ffffff';
+      oCtx.fillRect(0, 0, dstW, dstH);
+
+      // 4px 인셋과 둥근 곡률(R=76px)로 자른 흔적(바닥 검은색)을 완전 제거
+      const inset = 8; // 600 DPI 기준 8px (300 DPI 기준 4px)
+      const radius = 76; // 신분증 표준 R값
+
       oCtx.save();
       oCtx.beginPath();
-      oCtx.roundRect(0, 0, dstW, dstH, 36);
+      oCtx.roundRect(inset, inset, dstW - (inset * 2), dstH - (inset * 2), radius);
       oCtx.clip();
-      oCtx.drawImage(rawCanvas, 0, 0);
+      oCtx.drawImage(rawCanvas, 0, 0, dstW, dstH);
       oCtx.restore();
 
       return outCanvas;
     }
 
-    // A4 규격(300 DPI) 순백색(#FFFFFF) 스캔 문서 생성
+    // A4 300 DPI 순백색 스캔 문서 생성
     function getA4DocumentCanvas() {
       const cardCanvas = getCleanCardCanvas();
+      const a4W = 2480, a4H = 3508;
       const a4Canvas = document.createElement('canvas');
-      a4Canvas.width = 2480;
-      a4Canvas.height = 3508;
+      a4Canvas.width = a4W;
+      a4Canvas.height = a4H;
       const a4Ctx = a4Canvas.getContext('2d');
 
+      // 순백색 A4 배경
       a4Ctx.fillStyle = '#ffffff';
-      a4Ctx.fillRect(0, 0, 2480, 3508);
+      a4Ctx.fillRect(0, 0, a4W, a4H);
 
-      const posX = Math.round((2480 - 1011) / 2);
-      const posY = 350; // 상단 여백 배치
+      // A4 용지 상단 중앙에 실물 규격(1011 x 638)으로 정확히 배치
+      const targetW = 1011;
+      const targetH = 638;
+      const posX = Math.round((a4W - targetW) / 2);
+      const posY = 380; // 상단 여백
 
-      a4Ctx.drawImage(cardCanvas, posX, posY, 1011, 638);
+      a4Ctx.drawImage(cardCanvas, posX, posY, targetW, targetH);
       return a4Canvas;
     }
 
@@ -623,17 +489,14 @@
       }, 'image/jpeg', 0.95);
     }
 
-    // [🖨️ A4 1:1 실물 크기 인쇄]
+    // [🖨️ A4 인쇄]
     function printA4() {
       if (!cvReady || !originalImg) return;
-      // 실물 카드 이미지를 CSS 85.6mm x 53.98mm로 직접 인쇄하여 오차 제거
       const cardCanvas = getCleanCardCanvas();
       const dataUrl = cardCanvas.toDataURL('image/jpeg', 1.0);
       const pImg = document.getElementById('print-img');
       pImg.src = dataUrl;
-      pImg.onload = () => {
-        window.print();
-      };
+      pImg.onload = () => window.print();
     }
   </script>
 </body>
