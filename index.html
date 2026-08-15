@@ -395,16 +395,23 @@
     async function saveA4Document() {
       if (!originalImg) return;
       const cardCanvas = getCleanCardCanvas();
-      const a4 = document.createElement('canvas'); a4.width=2480; a4.height=3508;
+      const a4 = document.createElement('canvas'); 
+      a4.width = 2480; 
+      a4.height = 3508;
       const ctx = a4.getContext('2d');
-      ctx.fillStyle='#fff'; ctx.fillRect(0,0,2480,3508);
-      ctx.drawImage(cardCanvas, (2480-1011)/2, 380, 1011, 638);
-      const link = document.createElement('a'); link.download = "신분증_A4스캔본.jpg"; link.href = a4.toDataURL("image/jpeg", 1.0); link.click();
+      ctx.fillStyle = '#fff'; 
+      ctx.fillRect(0, 0, 2480, 3508);
+      
+      const x = (2480 - 1011) / 2;
+      const y = (3508 - 638) / 2;
+      
+      ctx.drawImage(cardCanvas, x, y, 1011, 638);
+      const link = document.createElement('a'); 
+      link.download = "신분증_A4스캔본.jpg"; 
+      link.href = a4.toDataURL("image/jpeg", 1.0); 
+      link.click();
       showToast("저장 완료!");
     }
   </script>
 </body>
 </html>
-
-제발 다른건 건들지말로 저장위치만 수정해 
-천천히 확인하먄서
