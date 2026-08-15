@@ -10,7 +10,7 @@
     body { font-family: -apple-system, sans-serif; background: #000; color: #fff; height: 100dvh; display: flex; flex-direction: column; overflow: hidden; }
     
     #main-container { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; }
-    #editor-canvas { max-width: 100%; max-height: 100%; }
+    #editor-canvas { max-width: 100%; max-height: 100%; object-fit: contain; }
 
     /* 돋보기 박스 */
     #loupe-container { position: absolute; bottom: 130px; right: 10px; width: 150px; height: 150px; border: 3px solid #ff1744; background: #000; z-index: 50; display: none; }
@@ -28,6 +28,8 @@
     .btn-warp { background: #00e676; color: black; }
     
     #result-modal { position: fixed; top:0; left:0; width:100%; height:100%; background:rgba(0,0,0,0.9); display:none; flex-direction:column; align-items:center; justify-content:center; z-index:200; }
+    /* 핵심 수정: 결과 이미지가 잘리지 않게 설정 */
+    #result-canvas { max-width: 95vw; max-height: 70vh; object-fit: contain; border: 2px solid #fff; }
   </style>
 </head>
 <body>
@@ -44,7 +46,7 @@
     </div>
     <div class="actions">
       <input type="file" id="file-input" accept="image/*" style="display: none;">
-      <button class="btn btn-shoot" onclick="document.getElementById('file-input').click()">📷 사진</button>
+      <button class="btn btn-shoot" onclick="document.getElementById('file-input').click()">📷 사진/앨범</button>
       <button class="btn btn-warp" id="btn-scan" onclick="processScan()">완료</button>
     </div>
   </div>
@@ -90,7 +92,7 @@
       ctx.closePath();
       ctx.strokeStyle = '#00e676'; ctx.lineWidth = 3; ctx.stroke();
       points.forEach((p, i) => {
-        ctx.beginPath(); ctx.arc(p.x, p.y, 25, 0, Math.PI * 2);
+        ctx.beginPath(); ctx.arc(p.x, p.y, 30, 0, Math.PI * 2);
         ctx.fillStyle = (activeIdx === i) ? '#ffea00' : '#ff1744';
         ctx.fill();
       });
@@ -101,7 +103,7 @@
       loupe.style.display = 'block';
       const p = points[activeIdx];
       lCtx.clearRect(0,0,150,150);
-      lCtx.drawImage(originalImg, (p.x * scaleX) - 30, (p.y * scaleY) - 30, 60, 60, 0, 0, 150, 150);
+      lCtx.drawImage(originalImg, (p.x * scaleX) - 40, (p.y * scaleY) - 40, 80, 80, 0, 0, 150, 150);
       lCtx.strokeStyle = 'red'; lCtx.strokeRect(65, 65, 20, 20);
     }
 
@@ -115,7 +117,7 @@
       const rect = editorCanvas.getBoundingClientRect();
       const x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
       const y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
-      activeIdx = points.findIndex(p => Math.hypot(p.x - x, p.y - y) < 50);
+      activeIdx = points.findIndex(p => Math.hypot(p.x - x, p.y - y) < 60);
       render();
     };
 
@@ -134,7 +136,7 @@
     editorCanvas.addEventListener('touchmove', handleDrag, {passive:false});
 
     function processScan() {
-      if(!cvReady) return;
+      if(!cvReady || !originalImg) return;
       const dstW = 1011, dstH = 638;
       const srcMat = cv.imread(originalImg);
       const dstMat = new cv.Mat();
@@ -142,10 +144,12 @@
       const dstTri = cv.matFromArray(4, 1, cv.CV_32FC2, [0, 0, dstW, 0, dstW, dstH, 0, dstH]);
       const M = cv.getPerspectiveTransform(srcTri, dstTri);
       cv.warpPerspective(srcMat, dstMat, M, new cv.Size(dstW, dstH), cv.INTER_LINEAR);
+      
       const resC = document.getElementById('result-canvas');
-      resC.width = dstW; resC.height = dstH;
       cv.imshow(resC, dstMat);
+      
       document.getElementById('result-modal').style.display = 'flex';
+      srcMat.delete(); dstMat.delete(); srcTri.delete(); dstTri.delete(); M.delete();
     }
   </script>
 </body>
