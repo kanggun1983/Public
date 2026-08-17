@@ -15,20 +15,19 @@
 
     #main-container { flex: 1; position: relative; overflow: hidden; display: flex; align-items: center; justify-content: center; background: #000; }
     
+    /* 업로드 뷰 스타일 수정 (버튼 분리) */
     #upload-view {
       display: flex; flex-direction: column; align-items: center; justify-content: center;
-      gap: 16px; width: 85%; max-width: 340px; padding: 36px 20px;
-      border: 2px dashed #444; border-radius: 16px; background: #141414; text-align: center; cursor: pointer;
+      gap: 12px; width: 85%; max-width: 360px; padding: 36px 20px;
+      border: 2px dashed #444; border-radius: 16px; background: #141414; text-align: center;
     }
-    #upload-view:active { border-color: #00e676; background: #1a1a1a; }
-    .upload-icon { font-size: 48px; }
-    .upload-title { font-size: 16px; font-weight: bold; color: #fff; }
-    .upload-desc { font-size: 12px; color: #888; line-height: 1.5; }
+    .upload-icon { font-size: 48px; margin-bottom: 4px; }
+    .upload-title { font-size: 17px; font-weight: bold; color: #fff; }
+    .upload-desc { font-size: 13px; color: #888; line-height: 1.5; margin-bottom: 10px; }
 
     #editor-view { width: 100%; height: 100%; display: none; align-items: center; justify-content: center; position: absolute; top: 0; left: 0; }
     #editor-canvas { max-width: 100%; max-height: 100%; object-fit: contain; touch-action: none; }
 
-    /* 보정(필터) 미리보기 뷰 */
     #preview-view { width: 100%; height: 100%; display: none; flex-direction: column; align-items: center; justify-content: center; position: absolute; top: 0; left: 0; padding: 20px; background: #0d0d0d; }
     #preview-canvas { max-width: 100%; max-height: 100%; object-fit: contain; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,230,118,0.15); }
 
@@ -67,7 +66,6 @@
     .btn-warp { background: #00e676; color: black; font-size: 14px; font-weight: bold; }
     .btn-print { background: #9c27b0; color: white; }
 
-    /* 슬라이더(필터) 스타일 */
     .slider-group { background: #222; padding: 12px 14px; border-radius: 10px; width: 100%; max-width: 380px; margin: 0 auto; display: flex; flex-direction: column; gap: 12px; border: 1px solid #333; }
     .slider-row { display: flex; align-items: center; font-size: 12px; color: #ddd; font-weight: 600; }
     .slider-row span.label { width: 40px; }
@@ -76,7 +74,6 @@
 
     #toast { position: fixed; top: 60px; left: 50%; transform: translateX(-50%); background: rgba(0,230,118,0.95); color: #000; padding: 8px 18px; border-radius: 20px; font-size: 13px; font-weight: bold; z-index: 9999; display: none; }
 
-    /* ★ 실제 물리 규격 85.6mm x 53.98mm 강제 인쇄 ★ */
     #print-area { display: none; }
     @media print {
       @page { size: auto; margin: 0mm; }
@@ -105,18 +102,25 @@
 
   <div id="toast">알림</div>
 
+  <!-- 카메라 촬영용 input (capture="environment" 적용) -->
+  <input type="file" id="camera-input" accept="image/*" capture="environment" style="display: none;">
+  <!-- 갤러리 선택용 input -->
   <input type="file" id="album-input" accept="image/*" style="display: none;">
 
   <!-- 메인 뷰 컨테이너 -->
   <div id="main-container">
     <!-- 0. 업로드 뷰 -->
-    <div id="upload-view" onclick="document.getElementById('album-input').click()">
-      <div class="upload-icon">🖼️</div>
-      <div class="upload-title">갤러리에서 사진 선택</div>
-      <div class="upload-desc">스캔할 신분증 사진을 불러오면<br>자동으로 정밀 편집 화면이 열립니다.</div>
+    <div id="upload-view">
+      <div class="upload-icon">📄</div>
+      <div class="upload-title">신분증 스캔 시작</div>
+      <div class="upload-desc">스캔할 신분증을 촬영하거나<br>갤러리에서 사진을 선택하세요.</div>
+      <div style="display: flex; gap: 10px; width: 100%; margin-top: 8px;">
+        <button class="btn btn-warp" style="flex: 1; padding: 12px 0;" onclick="document.getElementById('camera-input').click()">📸 카메라 촬영</button>
+        <button class="btn btn-album" style="flex: 1; padding: 12px 0;" onclick="document.getElementById('album-input').click()">🖼️ 갤러리 선택</button>
+      </div>
     </div>
 
-    <!-- 1. 정밀 에디터 뷰 (D-Pad용) -->
+    <!-- 1. 정밀 에디터 뷰 -->
     <div id="editor-view">
       <canvas id="editor-canvas"></canvas>
       <div id="loupe-container">
@@ -148,7 +152,11 @@
       </div>
 
       <div class="actions">
-        <button class="btn btn-album" onclick="document.getElementById('album-input').click()">🖼️ 사진 변경</button>
+        <!-- 사진 변경 버튼도 카메라/갤러리 2개로 분할 -->
+        <div style="display: flex; gap: 6px;">
+          <button class="btn btn-album" style="flex: 1; font-size: 12px;" onclick="document.getElementById('camera-input').click()">📸 재촬영</button>
+          <button class="btn btn-album" style="flex: 1; font-size: 12px;" onclick="document.getElementById('album-input').click()">🖼️ 갤러리</button>
+        </div>
         <button class="btn btn-warp" onclick="applyCrop()">✅ 영역 자르기 완료</button>
       </div>
     </div>
@@ -189,7 +197,7 @@
     let stepSize = 0.5;
     let nudgeTimer = null, nudgeInterval = null;
     let renderRequested = false;
-    let flatImageCanvas = null; // 잘라낸 원본 캔버스 저장용
+    let flatImageCanvas = null;
 
     const cornerNames = ["좌상단 ┌", "우상단 ┐", "우하단 ┘", "좌하단 └"];
 
@@ -215,8 +223,8 @@
       requestSafeRender();
     }
 
-    // 1. 이미지 로드 및 초기화
-    document.getElementById('album-input').onchange = (e) => {
+    // 파일 로드 공통 핸들러 (카메라, 갤러리 둘 다 사용)
+    const handleImageUpload = (e) => {
       const file = e.target.files[0];
       if (!file) return;
 
@@ -230,8 +238,11 @@
         tempImg.src = event.target.result;
       };
       reader.readAsDataURL(file);
-      e.target.value = '';
+      e.target.value = ''; // 같은 파일 재선택 가능하도록 초기화
     };
+
+    document.getElementById('camera-input').onchange = handleImageUpload;
+    document.getElementById('album-input').onchange = handleImageUpload;
 
     function openEditorView() {
       document.getElementById('upload-view').style.display = 'none';
@@ -342,7 +353,6 @@
       lCtx.restore();
     }
 
-    // 터치 & D-Pad 로직
     function applyNudge(dirX, dirY) {
       if (activeIdx === -1) return;
       const canvas = document.getElementById('editor-canvas');
@@ -385,10 +395,6 @@
     canvas.addEventListener('mousemove', handleDrag); canvas.addEventListener('touchmove', handleDrag, {passive: false});
 
 
-    // =========================================================================
-    // 신규 통합 로직: OpenCV 처리 후 필터 미리보기 창 띄우기
-    // =========================================================================
-
     function getCleanCardCanvas() {
       const dstW = 1011, dstH = 638;
       const rawCanvas = document.createElement('canvas'); rawCanvas.width = dstW; rawCanvas.height = dstH;
@@ -400,16 +406,16 @@
       const M = cv.getPerspectiveTransform(srcTri, dstTri);
       cv.warpPerspective(srcMat, dstMat, M, new cv.Size(dstW, dstH), cv.INTER_CUBIC);
       
-      // 사용자 기존 선명도(언샤프 마스크) 로직
       const blurred = new cv.Mat();
       cv.GaussianBlur(dstMat, blurred, new cv.Size(0, 0), 2.0);
       cv.addWeighted(dstMat, 1.35, blurred, -0.35, 0, dstMat);
       blurred.delete();
       
       cv.imshow(rawCanvas, dstMat);
+      
+      // OpenCV 메모리 해제 (안전하게 관리됨)
       srcMat.delete(); dstMat.delete(); srcTri.delete(); dstTri.delete(); M.delete();
       
-      // 모서리 둥글게 처리
       const outCanvas = document.createElement('canvas'); outCanvas.width = dstW; outCanvas.height = dstH;
       const oCtx = outCanvas.getContext('2d');
       oCtx.fillStyle = '#ffffff'; oCtx.fillRect(0, 0, dstW, dstH);
@@ -419,22 +425,19 @@
       return outCanvas;
     }
 
-    // 자르기 완료 -> 필터 뷰로 이동
     function applyCrop() {
       if (typeof cv === 'undefined' || !cvReady) { showToast('이미지 처리 엔진을 불러오는 중입니다...'); return; }
       
       showToast("이미지 펴는 중...");
       setTimeout(() => {
-        flatImageCanvas = getCleanCardCanvas(); // 고해상도 원본 임시 저장
+        flatImageCanvas = getCleanCardCanvas(); 
         
-        // 뷰 전환
         document.getElementById('editor-view').style.display = 'none';
         document.getElementById('crop-panel').style.display = 'none';
         
         document.getElementById('preview-view').style.display = 'flex';
         document.getElementById('action-panel').style.display = 'flex';
         
-        // 슬라이더 초기화
         document.getElementById('val-brightness').value = 100;
         document.getElementById('val-contrast').value = 100;
         document.getElementById('val-grayscale').value = 0;
@@ -443,7 +446,6 @@
       }, 100);
     }
 
-    // 다시 자르기로 돌아가기
     function backToCrop() {
       document.getElementById('preview-view').style.display = 'none';
       document.getElementById('action-panel').style.display = 'none';
@@ -451,7 +453,6 @@
       document.getElementById('crop-panel').style.display = 'flex';
     }
 
-    // 필터 슬라이더 값 적용
     function renderFilteredPreview() {
       if (!flatImageCanvas) return;
       
@@ -474,10 +475,6 @@
       pCtx.drawImage(flatImageCanvas, 0, 0);
     }
 
-    // =========================================================================
-    // 내보내기 로직 (인쇄 & 저장) -> 적용된 필터(preview-canvas) 기준 출력
-    // =========================================================================
-
     function printA4() {
       const pCanvas = document.getElementById('preview-canvas');
       document.getElementById('print-img').src = pCanvas.toDataURL('image/jpeg', 1.0);
@@ -487,13 +484,11 @@
     async function saveA4Document() {
       const pCanvas = document.getElementById('preview-canvas');
       
-      // A4 사이즈 배경 생성 (휴대폰 개통 서류 규격 대응)
       const a4 = document.createElement('canvas'); 
       a4.width = 2480; a4.height = 3508;
       const ctx = a4.getContext('2d');
       ctx.fillStyle = '#fff'; ctx.fillRect(0,0,2480,3508);
       
-      // 중앙 상단부에 배치 (비율 그대로 삽입)
       ctx.drawImage(pCanvas, (2480 - 1011) / 2, 380, 1011, 638);
       
       const link = document.createElement('a'); 
