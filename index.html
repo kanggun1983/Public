@@ -133,6 +133,8 @@
     .text-input { width: 100%; height: 42px; background: #111; border: 1px solid #3a3a3a; border-radius: 10px; color: #fff; padding: 0 12px; font-size: 15px; }
     .chips-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
     .chips-wrap .chip { flex: 0 0 auto; padding: 0 12px; }
+    .chip[data-type] { padding: 0 2px; letter-spacing: -0.3px; }
+    @media (max-width: 380px) { .chip[data-type] { font-size: 11px; } }
     .check-row { display: flex; align-items: center; gap: 8px; font-size: 13px; }
     .check-row input { width: 20px; height: 20px; accent-color: var(--accent); }
     .slider-row { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 600; }
@@ -163,7 +165,7 @@
 <body data-step="1">
 
   <header>
-    <div class="brand">🪪 신분증 스캐너 <small style="font-size:10px;color:#666;font-weight:600">v3</small> <span id="engine" class="ok">🔒 기기 내 처리</span></div>
+    <div class="brand">🪪 신분증 스캐너 <small style="font-size:10px;color:#666;font-weight:600">v4</small> <span id="engine" class="ok">🔒 기기 내 처리</span></div>
     <button class="hbtn" onclick="newCustomer()">🔄 새 손님</button>
   </header>
 
@@ -244,6 +246,7 @@
       <button class="chip" data-type="jumin" onclick="setCardType('jumin')">주민등록증</button>
       <button class="chip" data-type="license" onclick="setCardType('license')">운전면허증</button>
       <button class="chip" data-type="welfare" onclick="setCardType('welfare')">복지카드</button>
+      <button class="chip" data-type="alien" onclick="setCardType('alien')">외국인등록증</button>
     </div>
 
     <div class="toggles">
@@ -297,7 +300,7 @@
       <h3>💧 워터마크 문구 <button onclick="closeSheet()">완료</button></h3>
       <div class="field">
         <label>매장명</label>
-        <input type="text" class="text-input" id="wm-store" maxlength="20" oninput="onWmChange()" placeholder="예: LGU+ 진천점">
+        <input type="text" class="text-input" id="wm-store" maxlength="20" oninput="onWmChange()" placeholder="예: 행복통신 OO점">
       </div>
       <div class="field">
         <label>용도</label>
@@ -338,7 +341,8 @@
     const CARD_TYPES = {
       jumin:   { name: '주민등록증', masks: [{ x: 0.29, y: 0.33, w: 0.22, h: 0.17 }] },
       license: { name: '운전면허증', masks: [{ x: 0.55, y: 0.36, w: 0.25, h: 0.13 }] },
-      welfare: { name: '복지카드',   masks: [{ x: 0.29, y: 0.33, w: 0.22, h: 0.17 }] }
+      welfare: { name: '복지카드',   masks: [{ x: 0.29, y: 0.33, w: 0.22, h: 0.17 }] },
+      alien:   { name: '외국인등록증', masks: [{ x: 0.62, y: 0.2, w: 0.22, h: 0.12 }] }   // 외국인등록번호 뒷자리 (위치 조정으로 맞추면 기억)
     };
     const typeDefaults = t => CARD_TYPES[t].masks.map(m => ({ ...m }));
     const PRESETS = { orig: [100, 100, 0], sharp: [104, 125, 0], doc: [112, 150, 100] };
@@ -360,7 +364,7 @@
     const DEFAULTS = {
       cardType: 'jumin', masksByType: {}, topDirPortrait: 'right', topDirLandscape: 'up',
       maskOn: true, masks: typeDefaults('jumin'),
-      wmOn: true, wmStore: 'LGU+ 진천점', wmPurpose: PURPOSES[0], wmDate: true,
+      wmOn: true, wmStore: '', wmPurpose: PURPOSES[0], wmDate: true,
       wmOpacity: 30, wmSize: 100, wmColor: '0,0,0', preset: 'orig'
     };
     const settings = Object.assign({}, DEFAULTS, loadSettings());
@@ -1083,7 +1087,7 @@
       $('mask-desc').textContent = settings.maskOn ? `${settings.masks.length}곳 가림` : '가리지 않음';
       $('tgl-wm').classList.toggle('on', settings.wmOn);
       $('pill-wm').textContent = settings.wmOn ? 'ON' : 'OFF';
-      $('wm-desc').textContent = settings.wmOn ? (settings.wmPurpose || settings.wmStore || '문구 없음') : '넣지 않음';
+      $('wm-desc').textContent = settings.wmOn ? (!String(settings.wmStore || '').trim() ? '✏️ 매장명을 넣어 주세요' : (settings.wmPurpose || settings.wmStore || '문구 없음')) : '넣지 않음';
       document.querySelectorAll('[data-preset]').forEach(el => el.classList.toggle('active', el.dataset.preset === settings.preset));
       $('chip-custom').classList.toggle('active', settings.preset === 'custom');
       const n = pending.length;
@@ -1293,8 +1297,11 @@
     async function saveCardOnly() {
       if (!guard()) return;
       const cards = allCards(), s = stamp();
-      for (let i = 0; i < cards.length; i++) download(await canvasToJpeg300(cards[i]), cards.length > 1 ? `${fname()}_${s}_${i + 1}.jpg` : `${fname()}_${s}.jpg`);
-      dirty = false; toast(`🪪 카드 이미지 ${cards.length}장 저장 (300dpi)`);
+      for (let i = 0; i < cards.length; i++) {
+        if (i) await new Promise(r => setTimeout(r, 900));   // 폰이 연속 다운로드를 막지 않게 사이를 둠
+        download(await canvasToJpeg300(cards[i]), cards.length > 1 ? `${fname()}_${s}_${i + 1}.jpg` : `${fname()}_${s}.jpg`);
+      }
+      dirty = false; toast(cards.length > 1 ? `🪪 카드 이미지 ${cards.length}장 저장 · "여러 파일 다운로드" 허용을 물으면 [허용]` : '🪪 카드 이미지 저장 (300dpi)', cards.length > 1, 3200);
     }
     async function shareImage() {
       if (!guard()) return;
@@ -1335,6 +1342,8 @@
     window.addEventListener('beforeunload', e => { if (dirty || pending.length) { e.preventDefault(); e.returnValue = ''; } });
 
     setStep(1);
+    // 📴 오프라인: 한 번 열어 두면 인터넷이 끊겨도 열림 (https에서만)
+    if ('serviceWorker' in navigator && location.protocol === 'https:') navigator.serviceWorker.register('sw.js').catch(() => {});
   </script>
 </body>
 </html>
